@@ -290,7 +290,6 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
     }
   }, [initialUrl, isCheckingAuth]);
 
-  // ✅ جلب تاريخ الفحوصات
   const fetchScanHistory = useCallback(async () => {
     if (!isLoggedIn) return;
     try {
@@ -437,7 +436,10 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
     );
   };
 
-  // ✅ تحسين fetchScan بإضافة useCallback
+  // client/app/scan/page.tsx
+
+  // client/app/scan/page.tsx
+
   const fetchScan = useCallback(
     async (urlToScan: string) => {
       if (!urlToScan) return;
@@ -472,14 +474,13 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
       setError("");
 
       try {
-        const res = await api.post("/scans/quick", {
+        const res = await api.post("/scans/direct-scan", {
           url: formattedUrl,
           deepScan: isDeepScan,
         });
         setScanResult(res.data);
 
         if (!isLoggedIn) {
-          // ✅ زيادة عدد المحاولات
           setGuestScanCount(guestScanCount + 1);
         } else {
           fetchScanHistory();
