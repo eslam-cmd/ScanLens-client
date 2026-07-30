@@ -1,7 +1,14 @@
-import type { NextConfig } from "next";
+// next.config.js
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  // ✅ ضروري لـ lucide-react
+  transpilePackages: ["lucide-react"],
 
-const nextConfig: NextConfig = {
-  /* config options here */
+  // ✅ تفعيل الـ strict mode
+  reactStrictMode: true,
+
+  // ✅ إضافة turbopack config فارغة (لإيقاف التحذير)
+  turbopack: {},
 };
 
-export default nextConfig;
+module.exports = nextConfig;

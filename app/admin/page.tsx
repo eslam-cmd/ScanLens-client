@@ -1,0 +1,1257 @@
+// client/app/admin/page.tsx
+"use client";
+
+import { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
+import {
+  ShieldCheck,
+  Settings,
+  User,
+  Users,
+  CreditCard,
+  Key,
+  Crown,
+  Star,
+  Sparkles,
+  Zap,
+  Check,
+  X,
+  Loader2,
+  AlertCircle,
+  ChevronRight,
+  LogOut,
+  Save,
+  Edit2,
+  Globe,
+  Clock,
+  Shield,
+  Award,
+  BarChart3,
+  History,
+  HelpCircle,
+  Infinity,
+  Rocket,
+  Flame,
+  Gem,
+  BadgeCheck,
+  CircleCheck,
+  CircleX,
+  Info,
+  ArrowUpRight,
+  Calendar,
+  TrendingUp,
+  Database,
+  Server,
+  Cloud,
+  LockKeyhole,
+  Fingerprint,
+  Scan,
+  FileSearch,
+  Bot,
+  Brain,
+  Cpu,
+  Gauge,
+  Activity,
+  PieChart,
+  LineChart,
+  Layers,
+  DollarSign,
+  Gift,
+  Ticket,
+  Medal,
+  Trophy,
+  RefreshCw,
+  Filter,
+  Search,
+  Eye,
+  MoreVertical,
+  Edit,
+  Trash2,
+  UserCheck,
+  UserX,
+  Mail,
+  Phone,
+  Building,
+  MapPin,
+  Globe as GlobeIcon,
+  AlertTriangle,
+  Timer,
+} from "lucide-react";
+import { api } from "@/lib/api";
+import { withAdmin } from "@/lib/guards/withAdmin";
+
+// ✅ استيراد من الملف المركزي للخطط
+import {
+  PlanType,
+  getPlanFeatures,
+  getPlan,
+  getPlanDisplayName,
+  getPlanIcon,
+  getPlanPrice,
+  isPaidPlan,
+  hasMinPlan,
+  PLAN_FEATURES,
+  PLANS,
+} from "@/lib/plans.config";
+
+// ✅ استيراد UpgradeModal
+import UpgradeModal from "@/components/layout/UpgradeModal";
+
+// ✅ إيميل الأدمن الرئيسي
+const ADMIN_EMAIL = "hdayaahdayaaslam34@gmail.com";
+
+interface UserData {
+  id: string;
+  email: string;
+  name: string | null;
+  plan: string;
+  role: string;
+  createdAt: string;
+  scansCount: number;
+  websites: any[];
+  payments: any[];
+  subscription: any | null;
+  license: any | null;
+}
+
+interface PaymentData {
+  id: string;
+  userId: string;
+  amount: number;
+  currency: string;
+  status: string;
+  description: string | null;
+  createdAt: string;
+  user: {
+    email: string;
+    name: string | null;
+  };
+}
+
+interface LicenseData {
+  id: string;
+  key: string;
+  plan: string;
+  email: string | null;
+  usedBy: string | null;
+  usedAt: string | null;
+  expiresAt: string | null;
+  isActive: boolean;
+  usesCount: number;
+  createdAt: string;
+}
+
+interface StatsData {
+  totalUsers: number;
+  totalScans: number;
+  totalRevenue: number;
+  totalLicenses: number;
+  activeLicenses: number;
+  planDistribution: {
+    plan: string;
+    count: number;
+    percentage: number;
+  }[];
+  recentUsers: UserData[];
+  recentPayments: PaymentData[];
+}
+
+function AdminPage() {
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [activeTab, setActiveTab] = useState<
+    "overview" | "users" | "payments" | "licenses" | "subscriptions"
+  >("overview");
+  const [stats, setStats] = useState<StatsData | null>(null);
+  const [users, setUsers] = useState<UserData[]>([]);
+  const [payments, setPayments] = useState<PaymentData[]>([]);
+  const [licenses, setLicenses] = useState<LicenseData[]>([]);
+  const [subscriptions, setSubscriptions] = useState<any[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<UserData | null>(null);
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const router = useRouter();
+
+  // ✅ حالة الاشتراك والعداد
+  const [subscription, setSubscription] = useState<{
+    expiresAt: string | null;
+    isExpiring: boolean;
+    daysRemaining: number;
+  } | null>(null);
+  const [timeLeft, setTimeLeft] = useState<{
+    days: number;
+    hours: number;
+    minutes: number;
+    seconds: number;
+  } | null>(null);
+
+  // ✅ الحصول على جميع الخطط للمقارنة
+  const allPlans = useMemo(() => Object.values(PLANS), []);
+
+  // ✅ الحصول على معلومات الخطة للعرض
+  const getPlanDisplayInfo = (planId: string) => {
+    const plan = getPlan(planId as PlanType);
+    const features = getPlanFeatures(planId as PlanType);
+    return {
+      ...plan,
+      ...features,
+      displayName: features.name,
+      icon: features.icon,
+      color: features.color,
+      borderColor: features.borderColor,
+      bgColor: features.bgColor,
+    };
+  };
+
+  const handleCreateLicense = async (planId: string, email?: string) => {
+    try {
+      const res = await api.post(
+        "/admin/licenses",
+        {
+          plan: planId, // ✅ تأكد من إرسال plan وليس planId
+          email: email || undefined,
+          expiresAt: undefined,
+          notes: `License created for ${email || "unknown user"}`,
+        },
+        { withCredentials: true },
+      );
+      setLicenses([res.data, ...licenses]);
+      const planDisplayName = getPlanDisplayName(planId as PlanType);
+      setSuccess(
+        `✅ License created for ${planDisplayName} plan: ${res.data.key}`,
+      );
+      setTimeout(() => setSuccess(""), 3000);
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Failed to create license");
+      setTimeout(() => setError(""), 3000);
+    }
+  };
+
+  // ✅ تنسيق القيم للعرض
+  const formatValue = (value: any): string => {
+    if (value === Infinity || value === "∞") return "∞";
+    if (typeof value === "boolean") return value ? "✅" : "❌";
+    if (typeof value === "number") return String(value);
+    return String(value);
+  };
+
+  // ✅ التحقق من صلاحية المدير مع الكوكيز
+  useEffect(() => {
+    const checkAdmin = async () => {
+      setLoading(true);
+      try {
+        const res = await api.get("/auth/me", { withCredentials: true });
+        if (res.data?.user) {
+          const userData = res.data.user;
+          setUser(userData);
+          if (userData.role === "admin") {
+            setIsAdmin(true);
+
+            // ✅ جلب معلومات الاشتراك (إذا كان غير الأدمن الرئيسي)
+            if (userData.email !== ADMIN_EMAIL && userData.subscription) {
+              const expiresAt = userData.subscription.expiresAt;
+              if (expiresAt) {
+                const expiryDate = new Date(expiresAt);
+                const now = new Date();
+                const daysRemaining = Math.ceil(
+                  (expiryDate.getTime() - now.getTime()) /
+                    (1000 * 60 * 60 * 24),
+                );
+                setSubscription({
+                  expiresAt,
+                  isExpiring: daysRemaining <= 7 && daysRemaining > 0,
+                  daysRemaining,
+                });
+              }
+            }
+
+            await fetchAllData();
+          } else {
+            router.push("/");
+          }
+        } else {
+          router.push("/login");
+        }
+      } catch (err: any) {
+        console.error("Auth error:", err);
+        if (err.response?.status === 401) {
+          router.push("/login");
+        } else {
+          setError("Failed to authenticate. Please try again.");
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    checkAdmin();
+  }, [router]);
+
+  // ✅ عداد تنازلي لانتهاء الاشتراك
+  useEffect(() => {
+    if (!subscription?.expiresAt) return;
+
+    const interval = setInterval(() => {
+      const now = new Date();
+      const expiryDate = new Date(subscription.expiresAt!);
+      const diff = expiryDate.getTime() - now.getTime();
+
+      if (diff <= 0) {
+        setTimeLeft(null);
+        setSubscription((prev) => ({ ...prev!, isExpiring: false }));
+        clearInterval(interval);
+        return;
+      }
+
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor(
+        (diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60),
+      );
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+      setTimeLeft({ days, hours, minutes, seconds });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [subscription?.expiresAt]);
+
+  // ✅ عرض تحذير انتهاء الاشتراك (لغير الأدمن الرئيسي)
+  const renderSubscriptionWarning = () => {
+    // ✅ إذا كان الأدمن الرئيسي، لا يعرض تحذير
+    if (user?.email === ADMIN_EMAIL) return null;
+    if (!subscription?.isExpiring || !subscription?.expiresAt) return null;
+
+    const isExpired = subscription.daysRemaining <= 0;
+    const isCritical = subscription.daysRemaining <= 3;
+
+    if (isExpired) {
+      return (
+        <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 mb-6 animate-pulse">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-xl bg-rose-500/20 flex-shrink-0">
+                <AlertTriangle className="h-6 w-6 text-rose-400" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-rose-400 flex items-center gap-2">
+                  ⚠️ Admin Subscription Expired
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                    Action Required
+                  </span>
+                </p>
+                <p className="text-xs text-slate-400">
+                  Your admin subscription has expired. Some admin features may
+                  be limited. Please contact support.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowUpgradeModal(true)}
+              className="px-4 py-2 rounded-xl bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white text-xs font-semibold transition shadow-lg shadow-rose-500/20 whitespace-nowrap"
+            >
+              🔄 Renew
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div
+        className={`p-4 rounded-2xl border ${
+          isCritical
+            ? "bg-amber-500/10 border-amber-500/30"
+            : "bg-amber-500/5 border-amber-500/20"
+        } mb-6`}
+      >
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div
+              className={`p-2 rounded-xl ${
+                isCritical ? "bg-amber-500/20" : "bg-amber-500/10"
+              } flex-shrink-0`}
+            >
+              <Calendar
+                className={`h-6 w-6 ${
+                  isCritical ? "text-amber-400" : "text-amber-300"
+                }`}
+              />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-white flex items-center gap-2">
+                {isCritical
+                  ? "⚠️ Admin Subscription Expiring Soon!"
+                  : "⏳ Admin Subscription Expiring"}
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded-full ${
+                    isCritical
+                      ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                      : "bg-amber-500/10 text-amber-300 border border-amber-500/20"
+                  }`}
+                >
+                  {subscription.daysRemaining} days left
+                </span>
+              </p>
+              <p className="text-xs text-slate-400">
+                Your admin subscription will expire in{" "}
+                <span className="text-amber-400 font-semibold">
+                  {subscription.daysRemaining} days
+                </span>
+                . Renew to continue managing the platform.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {timeLeft && (
+              <div className="flex items-center gap-1 bg-slate-950/50 px-3 py-1.5 rounded-lg border border-slate-800">
+                <Timer className="h-3.5 w-3.5 text-amber-400" />
+                <span className="text-xs font-mono text-amber-400">
+                  {timeLeft.days}d {timeLeft.hours}h {timeLeft.minutes}m{" "}
+                  {timeLeft.seconds}s
+                </span>
+              </div>
+            )}
+            <button
+              onClick={() => setShowUpgradeModal(true)}
+              className={`px-4 py-2 rounded-xl text-white text-xs font-semibold transition whitespace-nowrap shadow-lg ${
+                isCritical
+                  ? "bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 shadow-amber-500/20"
+                  : "bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-400 shadow-sky-500/20"
+              }`}
+            >
+              {isCritical ? "🔴 Renew Now" : "🔄 Renew"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ✅ جلب جميع البيانات
+  const fetchAllData = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        fetchStats(),
+        fetchUsers(),
+        fetchPayments(),
+        fetchLicenses(),
+        fetchSubscriptions(),
+      ]);
+    } catch (err) {
+      console.error("Failed to fetch data:", err);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // ✅ جلب الإحصائيات
+  const fetchStats = async () => {
+    try {
+      const res = await api.get("/admin/stats", { withCredentials: true });
+      setStats(res.data);
+    } catch (err) {
+      console.error("Failed to fetch stats:", err);
+      setError("Failed to load statistics");
+    }
+  };
+
+  // ✅ جلب جميع المستخدمين مع كل البيانات
+  const fetchUsers = async () => {
+    try {
+      const res = await api.get("/admin/users", { withCredentials: true });
+      setUsers(res.data);
+    } catch (err) {
+      console.error("Failed to fetch users:", err);
+      setError("Failed to load users");
+    }
+  };
+
+  // ✅ جلب المدفوعات
+  const fetchPayments = async () => {
+    try {
+      const res = await api.get("/admin/payments", { withCredentials: true });
+      setPayments(res.data);
+    } catch (err) {
+      console.error("Failed to fetch payments:", err);
+      setError("Failed to load payments");
+    }
+  };
+
+  // ✅ جلب المفاتيح
+  const fetchLicenses = async () => {
+    try {
+      const res = await api.get("/admin/licenses", { withCredentials: true });
+      setLicenses(res.data);
+    } catch (err) {
+      console.error("Failed to fetch licenses:", err);
+      setError("Failed to load licenses");
+    }
+  };
+
+  // ✅ جلب الاشتراكات
+  const fetchSubscriptions = async () => {
+    try {
+      const res = await api.get("/admin/subscriptions", {
+        withCredentials: true,
+      });
+      setSubscriptions(res.data);
+    } catch (err) {
+      console.error("Failed to fetch subscriptions:", err);
+    }
+  };
+
+  // ✅ تعطيل مفتاح
+  const handleRevokeLicense = async (licenseId: string) => {
+    if (!confirm("Are you sure you want to revoke this license?")) return;
+    try {
+      await api.delete(`/admin/licenses/${licenseId}`, {
+        withCredentials: true,
+      });
+      setLicenses(licenses.filter((l) => l.id !== licenseId));
+      setSuccess("✅ License revoked successfully");
+      setTimeout(() => setSuccess(""), 3000);
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Failed to revoke license");
+      setTimeout(() => setError(""), 3000);
+    }
+  };
+
+  // ✅ تغيير خطة المستخدم
+  const handleChangeUserPlan = async (userId: string, plan: string) => {
+    if (
+      !confirm(`Change user plan to ${getPlanDisplayName(plan as PlanType)}?`)
+    )
+      return;
+    try {
+      await api.put(
+        `/admin/users/${userId}/plan`,
+        { plan },
+        { withCredentials: true },
+      );
+      setUsers(users.map((u) => (u.id === userId ? { ...u, plan } : u)));
+      const planDisplayName = getPlanDisplayName(plan as PlanType);
+      setSuccess(`✅ User plan updated to ${planDisplayName}`);
+      setTimeout(() => setSuccess(""), 3000);
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Failed to update user plan");
+      setTimeout(() => setError(""), 3000);
+    }
+  };
+
+  // ✅ حذف مستخدم
+  const handleDeleteUser = async (userId: string) => {
+    if (
+      !confirm(
+        "Are you sure you want to delete this user? This action cannot be undone!",
+      )
+    )
+      return;
+    try {
+      await api.delete(`/admin/users/${userId}`, { withCredentials: true });
+      setUsers(users.filter((u) => u.id !== userId));
+      setSuccess("✅ User deleted successfully");
+      setTimeout(() => setSuccess(""), 3000);
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Failed to delete user");
+      setTimeout(() => setError(""), 3000);
+    }
+  };
+
+  // ✅ تصفية المستخدمين
+  const filteredUsers = users.filter(
+    (u) =>
+      u.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.email.toLowerCase().includes(searchQuery.toLowerCase()),
+  );
+
+  // ✅ تصفية المدفوعات
+  const filteredPayments = payments.filter(
+    (p) =>
+      p.user?.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.description?.toLowerCase().includes(searchQuery.toLowerCase()),
+  );
+
+  // ✅ تصفية المفاتيح
+  const filteredLicenses = licenses.filter(
+    (l) =>
+      l.key.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      l.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      l.usedBy?.toLowerCase().includes(searchQuery.toLowerCase()),
+  );
+
+  // ✅ التحقق من أن المستخدم هو الأدمن الرئيسي
+  const isMainAdmin = user?.email === ADMIN_EMAIL;
+
+  if (loading) {
+    return (
+      <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-8 w-8 text-sky-400 animate-spin" />
+          <p className="text-sm text-slate-400">Loading admin dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center">
+        <div className="text-center">
+          <Shield className="h-16 w-16 text-rose-400 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-white">Access Denied</h2>
+          <p className="text-sm text-slate-400">
+            You do not have permission to view this page.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-10 max-w-7xl">
+      {/* ✅ تحذير انتهاء الاشتراك (لغير الأدمن الرئيسي) */}
+      {renderSubscriptionWarning()}
+
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
+        <div className="flex items-center gap-3">
+          <Shield className="h-8 w-8 text-amber-400" />
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">
+            Admin Dashboard
+            {isMainAdmin && (
+              <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                👑 Main Admin
+              </span>
+            )}
+          </h1>
+          <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
+            {user?.email}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={fetchAllData}
+            disabled={refreshing}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition disabled:opacity-50"
+          >
+            <RefreshCw
+              className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+            />
+            <span>Refresh</span>
+          </button>
+          <button
+            onClick={() => router.push("/")}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition"
+          >
+            <ArrowUpRight className="h-4 w-4" />
+            <span>Back to Site</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Messages */}
+      {error && (
+        <div className="flex items-start gap-2.5 p-3 sm:p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs sm:text-sm font-medium text-rose-400 mb-4">
+          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+          <span className="flex-1">{error}</span>
+          <button
+            onClick={() => setError("")}
+            className="text-rose-400/60 hover:text-rose-400 transition"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {success && (
+        <div className="flex items-start gap-2.5 p-3 sm:p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs sm:text-sm font-medium text-emerald-400 mb-4">
+          <Check className="h-4 w-4 shrink-0 mt-0.5" />
+          <span className="flex-1">{success}</span>
+          <button
+            onClick={() => setSuccess("")}
+            className="text-emerald-400/60 hover:text-emerald-400 transition"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-800 pb-2 mb-6">
+        {[
+          { id: "overview", label: "Overview", icon: BarChart3 },
+          { id: "users", label: "Users", icon: Users },
+          { id: "payments", label: "Payments", icon: CreditCard },
+          { id: "licenses", label: "Licenses", icon: Key },
+          { id: "subscriptions", label: "Subscriptions", icon: Crown },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold transition cursor-pointer ${
+                activeTab === tab.id
+                  ? "bg-sky-600/10 text-sky-400 border border-sky-500/20"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Search Bar */}
+      <div className="mb-4">
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+          <input
+            type="text"
+            placeholder="Search..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-sky-500 transition"
+          />
+        </div>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === "overview" && stats && (
+        <div className="space-y-6">
+          {/* Stats Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+            {[
+              {
+                label: "Total Users",
+                value: stats.totalUsers || 0,
+                icon: Users,
+                color: "text-sky-400",
+                bg: "bg-sky-500/10",
+              },
+              {
+                label: "Total Scans",
+                value: stats.totalScans || 0,
+                icon: Scan,
+                color: "text-emerald-400",
+                bg: "bg-emerald-500/10",
+              },
+              {
+                label: "Revenue",
+                value: `$${stats.totalRevenue || 0}`,
+                icon: DollarSign,
+                color: "text-amber-400",
+                bg: "bg-amber-500/10",
+              },
+              {
+                label: "Active Licenses",
+                value: stats.activeLicenses || 0,
+                icon: Key,
+                color: "text-purple-400",
+                bg: "bg-purple-500/10",
+              },
+            ].map((stat, i) => {
+              const Icon = stat.icon;
+              return (
+                <div
+                  key={i}
+                  className="p-3 sm:p-4 rounded-xl bg-slate-900/40 border border-slate-800/50 text-center hover:border-slate-700 transition"
+                >
+                  <div
+                    className={`inline-flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-xl ${stat.bg} border border-slate-800/50 mb-1.5 sm:mb-2`}
+                  >
+                    <Icon className={`h-4 w-4 sm:h-5 sm:w-5 ${stat.color}`} />
+                  </div>
+                  <p className="text-lg sm:text-xl font-bold text-white font-mono">
+                    {stat.value}
+                  </p>
+                  <p className="text-[9px] sm:text-[10px] text-slate-400 uppercase tracking-wider">
+                    {stat.label}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Plan Distribution */}
+          <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
+            <h3 className="text-sm font-bold text-white mb-3">
+              Plan Distribution
+            </h3>
+            <div className="space-y-3">
+              {stats.planDistribution?.map((plan: any) => {
+                const planInfo = getPlanDisplayInfo(plan.plan);
+                return (
+                  <div key={plan.plan}>
+                    <div className="flex justify-between text-xs text-slate-400">
+                      <span className="capitalize flex items-center gap-2">
+                        <planInfo.icon
+                          className={`h-3 w-3 ${planInfo.color}`}
+                        />
+                        {planInfo.displayName}
+                      </span>
+                      <span>
+                        {plan.count} users ({plan.percentage}%)
+                      </span>
+                    </div>
+                    <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${planInfo.color.replace("text-", "bg-")}`}
+                        style={{ width: `${plan.percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Recent Activity */}
+          <div className="grid md:grid-cols-2 gap-4">
+            {/* Recent Users */}
+            <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
+              <h3 className="text-sm font-bold text-white mb-3">
+                Recent Users
+              </h3>
+              <div className="space-y-2">
+                {stats.recentUsers?.slice(0, 5).map((u) => {
+                  const planInfo = getPlanDisplayInfo(u.plan);
+                  return (
+                    <div
+                      key={u.id}
+                      className="flex items-center justify-between p-2 rounded-lg bg-slate-950/50 border border-slate-800/50"
+                    >
+                      <div>
+                        <p className="text-sm text-white">
+                          {u.name || "Unknown"}
+                        </p>
+                        <p className="text-xs text-slate-400">{u.email}</p>
+                      </div>
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded-full ${planInfo.bgColor} ${planInfo.borderColor} ${planInfo.color}`}
+                      >
+                        <planInfo.icon className="h-3 w-3 inline mr-0.5" />
+                        {planInfo.displayName}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Recent Payments */}
+            <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
+              <h3 className="text-sm font-bold text-white mb-3">
+                Recent Payments
+              </h3>
+              <div className="space-y-2">
+                {stats.recentPayments?.slice(0, 5).map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex items-center justify-between p-2 rounded-lg bg-slate-950/50 border border-slate-800/50"
+                  >
+                    <div>
+                      <p className="text-sm text-white">
+                        {p.user?.email || "Unknown"}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {p.description || "Payment"}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-white">
+                        ${p.amount}
+                      </p>
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded-full ${
+                          p.status === "SUCCEEDED"
+                            ? "bg-emerald-500/20 text-emerald-400"
+                            : p.status === "FAILED"
+                              ? "bg-rose-500/20 text-rose-400"
+                              : "bg-amber-500/20 text-amber-400"
+                        }`}
+                      >
+                        {p.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Users Tab */}
+      {activeTab === "users" && (
+        <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <Users className="h-4 w-4 text-sky-400" />
+              All Users ({filteredUsers.length})
+            </h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-800 text-xs text-slate-400">
+                  <th className="text-left py-2 px-3">User</th>
+                  <th className="text-left py-2 px-3">Email</th>
+                  <th className="text-left py-2 px-3">Plan</th>
+                  <th className="text-left py-2 px-3">Role</th>
+                  <th className="text-left py-2 px-3">Scans</th>
+                  <th className="text-left py-2 px-3">Joined</th>
+                  <th className="text-left py-2 px-3">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredUsers.map((u) => {
+                  const planInfo = getPlanDisplayInfo(u.plan);
+                  return (
+                    <tr
+                      key={u.id}
+                      className="border-b border-slate-800/50 hover:bg-slate-800/30 transition"
+                    >
+                      <td className="py-2 px-3 text-white">{u.name || "—"}</td>
+                      <td className="py-2 px-3 text-slate-300">{u.email}</td>
+                      <td className="py-2 px-3">
+                        <select
+                          value={u.plan}
+                          onChange={(e) =>
+                            handleChangeUserPlan(u.id, e.target.value)
+                          }
+                          className={`text-xs px-2 py-0.5 rounded-full border border-transparent bg-transparent text-white focus:outline-none focus:border-sky-500 ${planInfo.color}`}
+                        >
+                          {allPlans.map((plan) => {
+                            const features = getPlanFeatures(plan.id);
+                            return (
+                              <option
+                                key={plan.id}
+                                value={plan.id}
+                                className="bg-slate-900"
+                              >
+                                {features.name}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </td>
+                      <td className="py-2 px-3">
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded-full ${
+                            u.role === "admin"
+                              ? "bg-amber-500/20 text-amber-400"
+                              : "bg-slate-500/20 text-slate-400"
+                          }`}
+                        >
+                          {u.role || "user"}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 text-slate-300">
+                        {u.scansCount || 0}
+                      </td>
+                      <td className="py-2 px-3 text-slate-400 text-xs">
+                        {new Date(u.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="py-2 px-3">
+                        <button
+                          onClick={() => handleDeleteUser(u.id)}
+                          className="text-rose-400 hover:text-rose-300 transition"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Payments Tab */}
+      {activeTab === "payments" && (
+        <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
+          <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+            <CreditCard className="h-4 w-4 text-emerald-400" />
+            Payment History ({filteredPayments.length})
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-800 text-xs text-slate-400">
+                  <th className="text-left py-2 px-3">User</th>
+                  <th className="text-left py-2 px-3">Amount</th>
+                  <th className="text-left py-2 px-3">Status</th>
+                  <th className="text-left py-2 px-3">Description</th>
+                  <th className="text-left py-2 px-3">Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredPayments.map((payment) => (
+                  <tr
+                    key={payment.id}
+                    className="border-b border-slate-800/50 hover:bg-slate-800/30 transition"
+                  >
+                    <td className="py-2 px-3 text-slate-300">
+                      {payment.user?.email || "—"}
+                    </td>
+                    <td className="py-2 px-3 text-white font-mono">
+                      ${payment.amount}
+                    </td>
+                    <td className="py-2 px-3">
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded-full ${
+                          payment.status === "SUCCEEDED"
+                            ? "bg-emerald-500/20 text-emerald-400"
+                            : payment.status === "FAILED"
+                              ? "bg-rose-500/20 text-rose-400"
+                              : "bg-amber-500/20 text-amber-400"
+                        }`}
+                      >
+                        {payment.status}
+                      </span>
+                    </td>
+                    <td className="py-2 px-3 text-slate-400 text-xs">
+                      {payment.description || "—"}
+                    </td>
+                    <td className="py-2 px-3 text-slate-400 text-xs">
+                      {new Date(payment.createdAt).toLocaleDateString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Licenses Tab */}
+      {activeTab === "licenses" && (
+        <div className="space-y-6">
+          {/* Create License */}
+          <div className="p-4 sm:p-6 rounded-2xl bg-gradient-to-br from-amber-500/10 via-amber-600/5 to-transparent border border-amber-500/20">
+            <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+              <Key className="h-4 w-4 text-amber-400" />
+              Create New License
+            </h3>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <select
+                id="planSelect"
+                className="px-4 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-sm focus:outline-none focus:border-sky-500 transition"
+              >
+                {allPlans.map((plan) => {
+                  const features = getPlanFeatures(plan.id);
+                  return (
+                    <option key={plan.id} value={plan.id}>
+                      {features.name}
+                    </option>
+                  );
+                })}
+              </select>
+              <input
+                type="email"
+                id="emailInput"
+                placeholder="User email (optional)"
+                className="flex-1 px-4 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-sm placeholder-slate-600 focus:outline-none focus:border-sky-500 transition"
+              />
+              <button
+                onClick={() => {
+                  const plan = (
+                    document.getElementById("planSelect") as HTMLSelectElement
+                  ).value;
+                  const email = (
+                    document.getElementById("emailInput") as HTMLInputElement
+                  ).value;
+                  handleCreateLicense(plan, email || undefined);
+                }}
+                className="px-6 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white text-sm font-semibold transition shadow-lg shadow-amber-500/20"
+              >
+                <Sparkles className="h-4 w-4 inline mr-1" />
+                Generate License
+              </button>
+            </div>
+          </div>
+
+          {/* Licenses List */}
+          <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
+            <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+              <Key className="h-4 w-4 text-purple-400" />
+              All Licenses ({filteredLicenses.length})
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-800 text-xs text-slate-400">
+                    <th className="text-left py-2 px-3">Key</th>
+                    <th className="text-left py-2 px-3">Plan</th>
+                    <th className="text-left py-2 px-3">Used By</th>
+                    <th className="text-left py-2 px-3">Status</th>
+                    <th className="text-left py-2 px-3">Uses</th>
+                    <th className="text-left py-2 px-3">Expires</th>
+                    <th className="text-left py-2 px-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredLicenses.map((license) => {
+                    const planInfo = getPlanDisplayInfo(license.plan);
+                    return (
+                      <tr
+                        key={license.id}
+                        className="border-b border-slate-800/50 hover:bg-slate-800/30 transition"
+                      >
+                        <td className="py-2 px-3 font-mono text-xs text-sky-400">
+                          {license.key}
+                        </td>
+                        <td className="py-2 px-3">
+                          <span
+                            className={`text-xs px-2 py-0.5 rounded-full ${planInfo.bgColor} ${planInfo.borderColor} ${planInfo.color}`}
+                          >
+                            <planInfo.icon className="h-3 w-3 inline mr-0.5" />
+                            {planInfo.displayName}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 text-slate-300">
+                          {license.usedBy || "—"}
+                        </td>
+                        <td className="py-2 px-3">
+                          <span
+                            className={`text-xs px-2 py-0.5 rounded-full ${
+                              license.isActive
+                                ? "bg-emerald-500/20 text-emerald-400"
+                                : "bg-rose-500/20 text-rose-400"
+                            }`}
+                          >
+                            {license.isActive ? "Active" : "Revoked"}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 text-slate-300">
+                          {license.usesCount || 0}
+                        </td>
+                        <td className="py-2 px-3 text-slate-400 text-xs">
+                          {license.expiresAt
+                            ? new Date(license.expiresAt).toLocaleDateString()
+                            : "Never"}
+                        </td>
+                        <td className="py-2 px-3">
+                          {license.isActive && (
+                            <button
+                              onClick={() => handleRevokeLicense(license.id)}
+                              className="text-xs text-rose-400 hover:text-rose-300 transition"
+                            >
+                              Revoke
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Subscriptions Tab */}
+      {activeTab === "subscriptions" && (
+        <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
+          <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+            <Crown className="h-4 w-4 text-amber-400" />
+            Subscriptions ({subscriptions.length})
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-800 text-xs text-slate-400">
+                  <th className="text-left py-2 px-3">User</th>
+                  <th className="text-left py-2 px-3">Plan</th>
+                  <th className="text-left py-2 px-3">Status</th>
+                  <th className="text-left py-2 px-3">Billing</th>
+                  <th className="text-left py-2 px-3">Start Date</th>
+                  <th className="text-left py-2 px-3">End Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {subscriptions.map((sub) => {
+                  const planInfo = sub.plan?.name
+                    ? getPlanDisplayInfo(sub.plan.name)
+                    : getPlanDisplayInfo("free");
+                  return (
+                    <tr
+                      key={sub.id}
+                      className="border-b border-slate-800/50 hover:bg-slate-800/30 transition"
+                    >
+                      <td className="py-2 px-3 text-white">
+                        {sub.user?.email || "—"}
+                      </td>
+                      <td className="py-2 px-3">
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded-full ${planInfo.bgColor} ${planInfo.borderColor} ${planInfo.color}`}
+                        >
+                          <planInfo.icon className="h-3 w-3 inline mr-0.5" />
+                          {planInfo.displayName}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3">
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded-full ${
+                            sub.status === "ACTIVE"
+                              ? "bg-emerald-500/20 text-emerald-400"
+                              : sub.status === "CANCELLED"
+                                ? "bg-rose-500/20 text-rose-400"
+                                : "bg-amber-500/20 text-amber-400"
+                          }`}
+                        >
+                          {sub.status}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 text-slate-300">
+                        {sub.billingCycle}
+                      </td>
+                      <td className="py-2 px-3 text-slate-400 text-xs">
+                        {new Date(sub.startDate).toLocaleDateString()}
+                      </td>
+                      <td className="py-2 px-3 text-slate-400 text-xs">
+                        {sub.endDate
+                          ? new Date(sub.endDate).toLocaleDateString()
+                          : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Upgrade Modal (لغير الأدمن الرئيسي) */}
+      {user?.email !== ADMIN_EMAIL && (
+        <UpgradeModal
+          isOpen={showUpgradeModal}
+          onClose={() => setShowUpgradeModal(false)}
+          currentPlan={user?.plan || "free"}
+          userEmail={user?.email}
+          onUpgradeSuccess={(plan: PlanType) => {
+            setUser({ ...user, plan });
+            setSubscription(null);
+            setTimeLeft(null);
+            setSuccess(`✅ Subscription renewed successfully!`);
+            setTimeout(() => setSuccess(""), 3000);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+export default withAdmin(AdminPage);
