@@ -130,6 +130,7 @@ interface PaymentData {
   user: {
     email: string;
     name: string | null;
+    plan?: string;
   };
 }
 
@@ -1573,16 +1574,14 @@ function AdminPage() {
                     <th className="text-left py-2 px-3">Expires</th>
                   </tr>
                 </thead>
+                {/* ✅ جدول المدفوعات - الجزء المعدل */}
                 <tbody>
                   {payments.length > 0 ? (
                     payments.map((payment, index) => {
-                      // ✅ الحصول على الخطة من المستخدم
-                      const userPlan =
-                        payment.user?.plan ||
-                        payment.metadata?.planId ||
-                        "free";
+                      // ✅ الحصول على الخطة من metadata (الأكثر أماناً)
+                      const userPlan = payment.metadata?.planId || "free";
 
-                      // ✅ الحصول على سعر الخطة من PLANS مباشرة
+                      // ✅ الحصول على سعر الخطة من PLANS
                       const planPrice =
                         PLANS[userPlan as keyof typeof PLANS]?.price || 0;
                       const planPriceYearly =
@@ -1601,9 +1600,7 @@ function AdminPage() {
                       const planInfo = getPlanDisplayInfo(userPlan);
 
                       // ✅ حالة الاشتراك
-                      const expiresAt =
-                        payment.metadata?.expiresAt ||
-                        payment.user?.subscriptionExpiresAt;
+                      const expiresAt = payment.metadata?.expiresAt;
                       const isActive = expiresAt
                         ? new Date(expiresAt) > new Date()
                         : true;
