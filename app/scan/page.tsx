@@ -1,14 +1,8 @@
 // client/app/scan/page.tsx
+
 "use client";
 
-import {
-  useState,
-  useEffect,
-  useCallback,
-  useMemo,
-  useRef,
-  Suspense,
-} from "react";
+import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   ShieldCheck,
@@ -30,11 +24,9 @@ import {
   FileSpreadsheet,
   FileText,
   Cookie,
-  Download,
   Loader2,
   Check,
   X,
-  Info,
   ArrowRight,
   Clock,
   Calendar,
@@ -44,18 +36,9 @@ import {
   Server,
   Award,
   AlertCircle,
-  User,
   LogIn,
   Crown,
-  Gem,
-  Star,
-  BadgeCheck,
-  Medal,
-  Trophy,
-  Sparkle,
-  Diamond,
   Filter,
-  SlidersHorizontal,
   Timer,
 } from "lucide-react";
 import {
@@ -78,20 +61,9 @@ import { Infinity as InfinityIcon } from "lucide-react";
 import {
   PlanType,
   PlanFeatures,
-  PLAN_FEATURES,
   getPlanFeatures,
   getPlan,
-  hasMinPlan,
-  hasFeature,
-  checkUserCapability,
-  getHistoryRetention,
   getMaxScans,
-  getPlanDisplayName,
-  getPlanIcon,
-  isPaidPlan,
-  getPlanPrice,
-  getAllPlans,
-  PLANS,
 } from "@/lib/plans.config";
 
 // ✅ استيراد UpgradeModal
@@ -144,7 +116,6 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
   const [targetUrl, setTargetUrl] = useState(initialUrl);
   const [isDeepScan, setIsDeepScan] = useState(true);
   const [scanHistory, setScanHistory] = useState<any[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -196,9 +167,10 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
     seconds: number;
   } | null>(null);
 
-  // ✅ الحصول على ميزات الخطة من الملف المركزي
+  // ✅ الحصول على ميزات الخطة
   const userPlanFeatures = useMemo(() => {
-    return getPlanFeatures(userPlan);
+    const features = getPlanFeatures(userPlan);
+    return features;
   }, [userPlan]);
 
   const userPlanData = useMemo(() => {
@@ -206,6 +178,62 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
   }, [userPlan]);
 
   const PlanIcon = userPlanFeatures.icon;
+
+  // ✅ تعريف fetchScanHistory
+  const fetchScanHistory = useCallback(async () => {
+    if (!isLoggedIn) return;
+    try {
+      const res = await api.get("/scans/history", { withCredentials: true });
+      setScanHistory(res.data || []);
+    } catch (err) {
+      console.error("Failed to fetch scan history:", err);
+    }
+  }, [isLoggedIn]);
+
+  // ✅ تعريف getScanLimitStatus
+  const getScanLimitStatus = useCallback(() => {
+    if (isLoggedIn) {
+      const maxScans = getMaxScans(userPlan);
+      const scansUsed = scanHistory?.length || 0;
+
+      if (maxScans === Infinity) {
+        return {
+          isLimitReached: false,
+          remaining: Infinity,
+          message: "Unlimited scans",
+        };
+      }
+
+      const remaining = Math.max(0, (maxScans as number) - scansUsed);
+      const isLimitReached = remaining <= 0;
+
+      return {
+        isLimitReached,
+        remaining,
+        message: isLimitReached
+          ? `⚠️ You've reached your ${userPlanFeatures.name} plan's daily limit`
+          : `${remaining} scans remaining today`,
+      };
+    }
+
+    const remaining = Math.max(0, MAX_GUEST_SCANS - guestScanCount);
+    const isLimitReached = remaining <= 0;
+
+    return {
+      isLimitReached,
+      remaining,
+      message: isLimitReached
+        ? "⚠️ Daily free scan limit reached"
+        : `${remaining} free scans remaining today`,
+    };
+  }, [isLoggedIn, userPlan, userPlanFeatures, scanHistory, guestScanCount]);
+
+  // ✅ استخدم fetchScanHistory في useEffect
+  useEffect(() => {
+    if (isLoggedIn) {
+      fetchScanHistory();
+    }
+  }, [isLoggedIn, fetchScanHistory]);
 
   // ✅ التحقق من صلاحية المستخدم
   useEffect(() => {
@@ -219,7 +247,6 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
           setUserPlan(userData.plan || "free");
           setUserRole(userData.role || "user");
 
-          // ✅ جلب معلومات الاشتراك
           if (userData.subscription) {
             const expiresAt = userData.subscription.expiresAt;
             if (expiresAt) {
@@ -237,7 +264,6 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
           }
         } else {
           setIsLoggedIn(false);
-          // ✅ استخدام البيانات المخزنة
           const data = getGuestScanData();
           setGuestScanData(data);
         }
@@ -290,22 +316,6 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
     }
   }, [initialUrl, isCheckingAuth]);
 
-  const fetchScanHistory = useCallback(async () => {
-    if (!isLoggedIn) return;
-    try {
-      const res = await api.get("/scans/history", { withCredentials: true });
-      setScanHistory(res.data || []);
-    } catch (err) {
-      console.error("Failed to fetch scan history:", err);
-    }
-  }, [isLoggedIn]);
-
-  useEffect(() => {
-    if (isLoggedIn) {
-      fetchScanHistory();
-    }
-  }, [isLoggedIn, fetchScanHistory]);
-
   // ✅ التحقق من صلاحية الفحص
   const canPerformScan = useCallback(() => {
     if (isLoggedIn) {
@@ -324,6 +334,775 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
     },
     [isLoggedIn, userPlanFeatures],
   );
+
+  // ✅ fetchScan باستخدام Direct Scan (بدون Queue)
+  const fetchScan = useCallback(
+    async (urlToScan: string) => {
+      if (!urlToScan) return;
+
+      if (!isLoggedIn) {
+        const remaining = MAX_GUEST_SCANS - guestScanCount;
+        if (remaining <= 0) {
+          setError(
+            "You have reached the daily limit of 2 free scans. Please log in to continue scanning.",
+          );
+          return;
+        }
+      }
+
+      if (!canPerformScan()) {
+        setError(
+          isLoggedIn
+            ? "You have reached your plan's scan limit. Please upgrade to continue."
+            : "You have reached the daily limit of 2 free scans. Please log in to continue scanning.",
+        );
+        return;
+      }
+
+      let formattedUrl = urlToScan.trim();
+      if (!/^https?:\/\//i.test(formattedUrl)) {
+        formattedUrl = `https://${formattedUrl}`;
+        setInputUrl(formattedUrl);
+      }
+
+      setLoading(true);
+      setError("");
+
+      try {
+        // ✅ استخدام direct-scan بدلاً من queue
+        const res = await api.post("/scans/direct-scan", {
+          url: formattedUrl,
+          deepScan: isDeepScan,
+        });
+
+        console.log("📊 Direct scan result:", res.data);
+        setScanResult(res.data);
+        setLoading(false);
+
+        if (!isLoggedIn) {
+          setGuestScanCount(guestScanCount + 1);
+        } else {
+          fetchScanHistory();
+        }
+      } catch (err: any) {
+        console.error("❌ Scan error:", err);
+        if (err.response?.status === 429) {
+          setError(
+            "Rate limit exceeded. Please wait a moment before trying again.",
+          );
+        } else if (err.response?.status === 401) {
+          setError(
+            "Session expired. Please log in again to continue scanning.",
+          );
+          setIsLoggedIn(false);
+        } else if (err.response?.status === 500) {
+          setError("Server error. Please try again later.");
+        } else {
+          setError(
+            err.response?.data?.message || "Failed to complete website scan",
+          );
+        }
+        setLoading(false);
+      }
+    },
+    [
+      isDeepScan,
+      isLoggedIn,
+      canPerformScan,
+      guestScanCount,
+      fetchScanHistory,
+      setGuestScanCount,
+    ],
+  );
+
+  // ✅ handleScanSubmit
+  const handleScanSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!inputUrl) return;
+
+      const limitStatus = getScanLimitStatus();
+      if (limitStatus.isLimitReached) {
+        setError(
+          isLoggedIn
+            ? `You have reached your daily limit of ${getMaxScans(userPlan)} scans. Upgrade your plan for unlimited scans.`
+            : `You have reached the daily limit of ${MAX_GUEST_SCANS} free scans. Please sign in to continue.`,
+        );
+        return;
+      }
+
+      if (!isLoggedIn) {
+        const remaining = MAX_GUEST_SCANS - guestScanCount;
+        if (remaining <= 0) {
+          setError(
+            "You have reached the daily limit of 2 free scans. Please log in to continue scanning.",
+          );
+          return;
+        }
+      }
+
+      if (!canPerformScan()) {
+        setError(
+          isLoggedIn
+            ? "You have reached your plan's scan limit. Please upgrade to continue."
+            : "You have reached the daily limit of 2 free scans. Please log in to continue scanning.",
+        );
+        return;
+      }
+
+      setTargetUrl(inputUrl);
+      router.replace(`/scan?url=${encodeURIComponent(inputUrl)}`, {
+        scroll: false,
+      });
+
+      await fetchScan(inputUrl);
+    },
+    [
+      inputUrl,
+      canPerformScan,
+      isLoggedIn,
+      fetchScan,
+      router,
+      guestScanCount,
+      userPlan,
+      getScanLimitStatus,
+    ],
+  );
+
+  // ✅ handleRequestAiFix
+  const handleRequestAiFix = useCallback(
+    async (title: string, description: string, index: number) => {
+      if (!isLoggedIn || !hasFeature("aiFixes")) {
+        setError(
+          "AI fixes are not available on your current plan. Please upgrade to access this feature.",
+        );
+        return;
+      }
+
+      setLoadingFixIndex(index);
+      setError("");
+
+      try {
+        const res = await api.post("/scans/ai-fix", {
+          title,
+          description,
+        });
+        setAiFixes((prev) => ({ ...prev, [index]: res.data.remediation }));
+      } catch (err: any) {
+        if (err.response?.status === 401 || err.response?.status === 403) {
+          setIsLoggedIn(false);
+          setError("Session expired. Please log in to use AI features.");
+        } else if (err.response?.status === 429) {
+          setError(
+            "Rate limit exceeded for AI features. Please try again later.",
+          );
+        } else {
+          setError(err.response?.data?.message || "Failed to generate AI fix.");
+        }
+      } finally {
+        setLoadingFixIndex(null);
+      }
+    },
+    [isLoggedIn, hasFeature],
+  );
+
+  // ✅ downloadReport
+  const downloadReport = useCallback(
+    async (type: "csv" | "pdf") => {
+      if (!isLoggedIn || !hasFeature("exportReports")) {
+        setError(
+          "Report export is not available on your current plan. Please upgrade to access this feature.",
+        );
+        return;
+      }
+
+      if (!scanResult?.id) {
+        setError("No valid scan ID found. Please re-run the scan.");
+        return;
+      }
+
+      setExporting(type);
+      try {
+        const response = await api.get(
+          `/scans/${scanResult.id}/export/${type}`,
+          {
+            responseType: "blob",
+          },
+        );
+
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute(
+          "download",
+          `SecureLens-Report-${scanResult.id}.${type}`,
+        );
+        document.body.appendChild(link);
+        link.click();
+        link.parentNode?.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      } catch (error) {
+        setError(
+          `Failed to download the ${type.toUpperCase()} report. Please try again.`,
+        );
+      } finally {
+        setExporting(null);
+      }
+    },
+    [isLoggedIn, hasFeature, scanResult],
+  );
+
+  // ✅ toggleSection
+  const toggleSection = useCallback((section: string) => {
+    setExpandedSections((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(section)) {
+        newSet.delete(section);
+      } else {
+        newSet.add(section);
+      }
+      return newSet;
+    });
+  }, []);
+
+  // ✅ تصفية الثغرات
+  const filteredVulnerabilities = useMemo(() => {
+    if (!scanResult?.vulnerabilities) return [];
+    let vulns = [...scanResult.vulnerabilities];
+
+    if (scanFilters.severity !== "all") {
+      vulns = vulns.filter((v) => v.severity === scanFilters.severity);
+    }
+
+    if (scanFilters.category !== "all") {
+      vulns = vulns.filter((v) =>
+        v.title.toLowerCase().includes(scanFilters.category.toLowerCase()),
+      );
+    }
+
+    if (scanFilters.searchQuery) {
+      vulns = vulns.filter(
+        (v) =>
+          v.title
+            .toLowerCase()
+            .includes(scanFilters.searchQuery.toLowerCase()) ||
+          v.description
+            .toLowerCase()
+            .includes(scanFilters.searchQuery.toLowerCase()),
+      );
+    }
+
+    return vulns;
+  }, [scanResult, scanFilters]);
+
+  // ✅ isScanButtonDisabled
+  const isScanButtonDisabled = useCallback(() => {
+    if (loading) return true;
+    if (!inputUrl) return true;
+
+    const status = getScanLimitStatus();
+    if (status.isLimitReached) return true;
+
+    return false;
+  }, [loading, inputUrl, getScanLimitStatus]);
+
+  // ✅ renderLimitError
+  const renderLimitError = () => {
+    const status = getScanLimitStatus();
+
+    if (!status.isLimitReached && !error) return null;
+
+    if (error) {
+      const isLimitError =
+        error.includes("limit") ||
+        error.includes("reached") ||
+        error.includes("quota");
+
+      if (isLimitError) {
+        return (
+          <div className="p-6 rounded-2xl bg-amber-500/10 border-2 border-amber-500/30 text-center space-y-4">
+            <div className="flex flex-col items-center gap-3">
+              <div className="p-4 rounded-full bg-amber-500/20">
+                <AlertTriangle className="h-10 w-10 text-amber-400" />
+              </div>
+              <h3 className="text-lg font-bold text-white">
+                Scan Limit Reached
+              </h3>
+              <p className="text-sm text-slate-300 max-w-md">{error}</p>
+
+              <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-900/50 px-4 py-2 rounded-lg">
+                <Clock className="h-4 w-4 text-amber-400" />
+                <span>Limit resets at midnight</span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 mt-2">
+                {!isLoggedIn ? (
+                  <Link
+                    href="/login"
+                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-400 text-white text-sm font-semibold transition shadow-lg shadow-sky-600/20 inline-flex items-center gap-2"
+                  >
+                    <LogIn className="h-4 w-4" />
+                    <span>Sign In for More Scans</span>
+                  </Link>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => setShowUpgradeModal(true)}
+                      className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white text-sm font-semibold transition shadow-lg shadow-amber-500/20 inline-flex items-center gap-2"
+                    >
+                      <Crown className="h-4 w-4" />
+                      <span>Upgrade Plan</span>
+                    </button>
+                    <Link
+                      href="/subscription"
+                      className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition"
+                    >
+                      View Plans
+                    </Link>
+                  </>
+                )}
+              </div>
+
+              {isLoggedIn && (
+                <div className="text-xs text-slate-500 mt-2">
+                  Current plan:{" "}
+                  <span className={userPlanFeatures.color}>
+                    {userPlanFeatures.name}
+                  </span>
+                  {userPlan !== "extra" && (
+                    <span className="block text-emerald-400 mt-1">
+                      💡 Upgrade to <span className="font-bold">Pro</span> or{" "}
+                      <span className="font-bold">Extra</span> for unlimited
+                      scans
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+    }
+
+    if (status.isLimitReached) {
+      return (
+        <div className="p-6 rounded-2xl bg-amber-500/10 border-2 border-amber-500/30 text-center space-y-4">
+          <div className="flex flex-col items-center gap-3">
+            <div className="p-4 rounded-full bg-amber-500/20 animate-pulse">
+              <Clock className="h-10 w-10 text-amber-400" />
+            </div>
+            <h3 className="text-lg font-bold text-white">
+              ⚠️ Scan Limit Reached
+            </h3>
+            <p className="text-sm text-slate-300 max-w-md">
+              {isLoggedIn
+                ? `You've used all ${getMaxScans(userPlan)} scans available on your ${userPlanFeatures.name} plan today.`
+                : `You've used all ${MAX_GUEST_SCANS} free scans available for guests today.`}
+            </p>
+
+            <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-900/50 px-4 py-2 rounded-lg">
+              <RefreshCw className="h-4 w-4 text-amber-400 animate-spin-slow" />
+              <span>Resets at midnight</span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 mt-2">
+              {!isLoggedIn ? (
+                <Link
+                  href="/login"
+                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-400 text-white text-sm font-semibold transition shadow-lg shadow-sky-600/20 inline-flex items-center gap-2"
+                >
+                  <LogIn className="h-4 w-4" />
+                  <span>Sign In for More Scans</span>
+                </Link>
+              ) : userPlan !== "extra" ? (
+                <>
+                  <button
+                    onClick={() => setShowUpgradeModal(true)}
+                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white text-sm font-semibold transition shadow-lg shadow-amber-500/20 inline-flex items-center gap-2"
+                  >
+                    <Crown className="h-4 w-4" />
+                    <span>Upgrade Now</span>
+                  </button>
+                  <Link
+                    href="/subscription"
+                    className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition"
+                  >
+                    View Plans
+                  </Link>
+                </>
+              ) : (
+                <div className="text-emerald-400 text-sm font-semibold">
+                  ✅ You have unlimited scans on your Extra plan
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  // ✅ renderErrorMessages
+  const renderErrorMessages = () => {
+    const limitStatus = getScanLimitStatus();
+    if (limitStatus.isLimitReached) {
+      return renderLimitError();
+    }
+
+    if (!error) return null;
+
+    const errorConfigs: Record<
+      string,
+      { icon: any; color: string; title: string; action?: React.ReactNode }
+    > = {
+      "You have reached the daily limit": {
+        icon: Clock,
+        color: "text-amber-400 border-amber-500/30 bg-amber-500/10",
+        title: "Daily Scan Limit Reached",
+        action: (
+          <div className="flex flex-wrap items-center gap-2">
+            {!isLoggedIn ? (
+              <Link
+                href="/login"
+                className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold transition shadow-lg shadow-sky-600/20 inline-flex items-center gap-2"
+              >
+                <LogIn className="h-4 w-4" />
+                <span>Sign In for More</span>
+              </Link>
+            ) : (
+              <button
+                onClick={() => setShowUpgradeModal(true)}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white text-xs font-semibold transition shadow-lg shadow-amber-500/20 inline-flex items-center gap-2"
+              >
+                <Crown className="h-4 w-4" />
+                <span>Upgrade Plan</span>
+              </button>
+            )}
+            <button
+              onClick={() => setError("")}
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+            >
+              Dismiss
+            </button>
+          </div>
+        ),
+      },
+      "You have reached your plan's scan limit": {
+        icon: Crown,
+        color: "text-amber-400 border-amber-500/30 bg-amber-500/10",
+        title: "Plan Limit Reached",
+        action: (
+          <button
+            onClick={() => setShowUpgradeModal(true)}
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white text-xs font-semibold transition shadow-lg shadow-amber-500/20 inline-flex items-center gap-2"
+          >
+            <Crown className="h-4 w-4" />
+            <span>Upgrade Plan</span>
+          </button>
+        ),
+      },
+      "Session expired": {
+        icon: Lock,
+        color: "text-rose-400 border-rose-500/30 bg-rose-500/10",
+        title: "Session Expired",
+        action: (
+          <Link
+            href="/login"
+            className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold transition shadow-lg shadow-sky-600/20 inline-flex items-center gap-2"
+          >
+            <LogIn className="h-4 w-4" />
+            <span>Sign In Again</span>
+          </Link>
+        ),
+      },
+      "Server error": {
+        icon: Server,
+        color: "text-rose-400 border-rose-500/30 bg-rose-500/10",
+        title: "Server Error",
+        action: (
+          <button
+            onClick={() => setError("")}
+            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+          >
+            <RefreshCw className="h-4 w-4 inline mr-1" />
+            Try Again
+          </button>
+        ),
+      },
+    };
+
+    let matchedConfig = null;
+    for (const [key, config] of Object.entries(errorConfigs)) {
+      if (error.includes(key) || key.includes(error)) {
+        matchedConfig = config;
+        break;
+      }
+    }
+
+    const Icon = matchedConfig?.icon || AlertTriangle;
+    const color =
+      matchedConfig?.color || "text-rose-400 border-rose-500/30 bg-rose-500/10";
+    const title = matchedConfig?.title || "Scan Failed";
+    const action = matchedConfig?.action || (
+      <button
+        onClick={() => setError("")}
+        className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+      >
+        Dismiss
+      </button>
+    );
+
+    return (
+      <div
+        className={`p-6 sm:p-8 rounded-2xl border ${color} text-center space-y-4`}
+      >
+        <Icon className="h-10 w-10 sm:h-12 sm:w-12 mx-auto" />
+        <h2 className="text-lg font-bold text-white">{title}</h2>
+        <p className="text-sm text-slate-400 max-w-md mx-auto">{error}</p>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          {action}
+        </div>
+      </div>
+    );
+  };
+
+  // ✅ renderScanLimitWarning
+  const renderScanLimitWarning = () => {
+    const status = getScanLimitStatus();
+
+    if (status.isLimitReached) {
+      return (
+        <div className="flex items-center gap-2 text-amber-400 text-xs bg-amber-500/10 px-3 py-2 rounded-lg border border-amber-500/20">
+          <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+          <span>
+            {isLoggedIn
+              ? `You've reached your daily limit of ${getMaxScans(userPlan)} scans. Upgrade for unlimited scans.`
+              : `You've reached the daily limit of ${MAX_GUEST_SCANS} free scans. Sign in for more.`}
+          </span>
+          {!isLoggedIn ? (
+            <Link
+              href="/login"
+              className="text-sky-400 hover:text-sky-300 font-semibold underline ml-1"
+            >
+              Sign In
+            </Link>
+          ) : (
+            userPlan !== "extra" && (
+              <button
+                onClick={() => setShowUpgradeModal(true)}
+                className="text-amber-400 hover:text-amber-300 font-semibold underline ml-1"
+              >
+                Upgrade
+              </button>
+            )
+          )}
+        </div>
+      );
+    }
+
+    const remaining = status.remaining;
+    if (remaining !== Infinity && remaining <= 2) {
+      return (
+        <div className="flex items-center gap-2 text-amber-400/70 text-xs bg-amber-500/5 px-3 py-2 rounded-lg border border-amber-500/10">
+          <Clock className="h-4 w-4 flex-shrink-0" />
+          <span>
+            {remaining} {remaining === 1 ? "scan" : "scans"} remaining today
+            {isLoggedIn && userPlan === "free" && (
+              <span className="text-slate-500 ml-1">
+                •{" "}
+                <button
+                  onClick={() => setShowUpgradeModal(true)}
+                  className="text-sky-400 hover:underline"
+                >
+                  Upgrade for more
+                </button>
+              </span>
+            )}
+          </span>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  // ✅ renderUserPlanBadge
+  const renderUserPlanBadge = () => {
+    if (!isLoggedIn) return null;
+    return (
+      <div
+        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full ${userPlanFeatures.bgColor} border ${userPlanFeatures.borderColor}`}
+      >
+        <PlanIcon className={`h-3.5 w-3.5 ${userPlanFeatures.color}`} />
+        <span className={`text-xs font-semibold ${userPlanFeatures.color}`}>
+          {userPlanFeatures.name}
+        </span>
+        <span
+          className={`text-[8px] px-1.5 py-0.5 rounded-full ${userPlanFeatures.badgeColor}`}
+        >
+          {userPlanData.badge}
+        </span>
+      </div>
+    );
+  };
+
+  // ✅ renderFeatureBadge
+  const renderFeatureBadge = (feature: keyof PlanFeatures, label: string) => {
+    const available = hasFeature(feature);
+    return (
+      <span
+        className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full ${
+          available
+            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+            : "bg-slate-800/50 text-slate-500 border border-slate-700"
+        }`}
+      >
+        {available ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+        {label}
+      </span>
+    );
+  };
+
+  // ✅ renderScanLimitInfo
+  const renderScanLimitInfo = () => {
+    if (isLoggedIn) {
+      const maxScans = getMaxScans(userPlan);
+      const maxScansNum = typeof maxScans === "number" ? maxScans : 0;
+
+      if (maxScansNum === Infinity) {
+        return (
+          <span className="flex items-center gap-1 text-purple-400">
+            <InfinityIcon className="h-3 w-3" />
+            Unlimited scans
+          </span>
+        );
+      }
+
+      const scansUsed = scanHistory?.length || 0;
+      const remaining = Math.max(0, maxScansNum - scansUsed);
+
+      return (
+        <span className="text-xs text-slate-400">
+          {remaining} / {maxScansNum} scans remaining today
+        </span>
+      );
+    }
+
+    const remaining = MAX_GUEST_SCANS - guestScanCount;
+    return (
+      <span className="text-xs text-slate-400">
+        {remaining} / {MAX_GUEST_SCANS} free scans remaining today
+      </span>
+    );
+  };
+
+  // ✅ renderStatusBadge
+  const renderStatusBadge = (status: boolean, label: string) => (
+    <span
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+        status
+          ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+          : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+      }`}
+    >
+      {status ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+      {label}
+    </span>
+  );
+
+  // ✅ renderCookiesData
+  const renderCookiesData = () => {
+    const cookies = scanResult?.cookies || [];
+
+    if (!cookies || cookies.length === 0) {
+      return (
+        <div className="p-4 rounded-xl bg-slate-950/50 border border-slate-800">
+          <p className="text-xs text-slate-500">No session cookies detected.</p>
+        </div>
+      );
+    }
+
+    const secureCookies = cookies.filter((c: any) => c.hasSecure);
+    const httpOnlyCookies = cookies.filter((c: any) => c.hasHttpOnly);
+    const sameSiteCookies = cookies.filter((c: any) => c.sameSite);
+
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="p-3 rounded-xl bg-slate-950/50 border border-slate-800 text-center">
+            <p className="text-lg font-bold text-white">{cookies.length}</p>
+            <p className="text-[9px] text-slate-400 uppercase">Total Cookies</p>
+          </div>
+          <div className="p-3 rounded-xl bg-slate-950/50 border border-emerald-500/20 text-center">
+            <p className="text-lg font-bold text-emerald-400">
+              {secureCookies.length}
+            </p>
+            <p className="text-[9px] text-emerald-400 uppercase">Secure</p>
+          </div>
+          <div className="p-3 rounded-xl bg-slate-950/50 border border-sky-500/20 text-center">
+            <p className="text-lg font-bold text-sky-400">
+              {httpOnlyCookies.length}
+            </p>
+            <p className="text-[9px] text-sky-400 uppercase">HttpOnly</p>
+          </div>
+          <div className="p-3 rounded-xl bg-slate-950/50 border border-amber-500/20 text-center">
+            <p className="text-lg font-bold text-amber-400">
+              {sameSiteCookies.length}
+            </p>
+            <p className="text-[9px] text-amber-400 uppercase">SameSite</p>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          {cookies.slice(0, 4).map((cookie: any, i: number) => (
+            <div
+              key={i}
+              className="p-3 rounded-xl bg-slate-950/50 border border-slate-800 hover:border-slate-700 transition"
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm font-mono text-white truncate">
+                  {cookie.name}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  {cookie.hasSecure && (
+                    <span className="text-[8px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                      Secure
+                    </span>
+                  )}
+                  {cookie.hasHttpOnly && (
+                    <span className="text-[8px] px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-400 border border-sky-500/30">
+                      HttpOnly
+                    </span>
+                  )}
+                  {cookie.sameSite && (
+                    <span
+                      className={`text-[8px] px-1.5 py-0.5 rounded ${
+                        cookie.sameSite === "None"
+                          ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                          : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                      }`}
+                    >
+                      SameSite: {cookie.sameSite}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-400 truncate">
+                {cookie.path || "/"}
+              </p>
+            </div>
+          ))}
+          {cookies.length > 4 && (
+            <p className="text-[10px] text-slate-500 text-center">
+              +{cookies.length - 4} more cookies
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   // ✅ عرض تحذير انتهاء الاشتراك
   const renderSubscriptionWarning = () => {
@@ -436,239 +1215,6 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
     );
   };
 
-  // client/app/scan/page.tsx
-
-  // client/app/scan/page.tsx
-
-  const fetchScan = useCallback(
-    async (urlToScan: string) => {
-      if (!urlToScan) return;
-
-      // ✅ التحقق من المحاولات اليومية للزوار
-      if (!isLoggedIn) {
-        const remaining = MAX_GUEST_SCANS - guestScanCount;
-        if (remaining <= 0) {
-          setError(
-            "You have reached the daily limit of 2 free scans. Please log in to continue scanning.",
-          );
-          return;
-        }
-      }
-
-      if (!canPerformScan()) {
-        setError(
-          isLoggedIn
-            ? "You have reached your plan's scan limit. Please upgrade to continue."
-            : "You have reached the daily limit of 2 free scans. Please log in to continue scanning.",
-        );
-        return;
-      }
-
-      let formattedUrl = urlToScan.trim();
-      if (!/^https?:\/\//i.test(formattedUrl)) {
-        formattedUrl = `https://${formattedUrl}`;
-        setInputUrl(formattedUrl);
-      }
-
-      setLoading(true);
-      setError("");
-
-      try {
-        const res = await api.post("/scans/direct-scan", {
-          url: formattedUrl,
-          deepScan: isDeepScan,
-        });
-        setScanResult(res.data);
-
-        if (!isLoggedIn) {
-          setGuestScanCount(guestScanCount + 1);
-        } else {
-          fetchScanHistory();
-        }
-      } catch (err: any) {
-        if (err.response?.status === 429) {
-          setError(
-            "Rate limit exceeded. Please wait a moment before trying again.",
-          );
-        } else if (err.response?.status === 401) {
-          setError(
-            "Session expired. Please log in again to continue scanning.",
-          );
-          setIsLoggedIn(false);
-        } else if (err.response?.status === 500) {
-          setError("Server error. Please try again later.");
-        } else {
-          setError(
-            err.response?.data?.message || "Failed to complete website scan",
-          );
-        }
-      } finally {
-        setLoading(false);
-      }
-    },
-    [
-      isDeepScan,
-      isLoggedIn,
-      canPerformScan,
-      guestScanCount,
-      fetchScanHistory,
-      setGuestScanCount,
-    ],
-  );
-
-  // ✅ تحسين handleScanSubmit
-  const handleScanSubmit = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!inputUrl) return;
-
-      // ✅ التحقق من المحاولات اليومية للزوار
-      if (!isLoggedIn) {
-        const remaining = MAX_GUEST_SCANS - guestScanCount;
-        if (remaining <= 0) {
-          setError(
-            "You have reached the daily limit of 2 free scans. Please log in to continue scanning.",
-          );
-          return;
-        }
-      }
-
-      if (!canPerformScan()) {
-        setError(
-          isLoggedIn
-            ? "You have reached your plan's scan limit. Please upgrade to continue."
-            : "You have reached the daily limit of 2 free scans. Please log in to continue scanning.",
-        );
-        return;
-      }
-
-      setTargetUrl(inputUrl);
-      router.replace(`/scan?url=${encodeURIComponent(inputUrl)}`, {
-        scroll: false,
-      });
-
-      await fetchScan(inputUrl);
-    },
-    [inputUrl, canPerformScan, isLoggedIn, fetchScan, router, guestScanCount],
-  );
-
-  // ✅ تحسين handleRequestAiFix
-  const handleRequestAiFix = useCallback(
-    async (title: string, description: string, index: number) => {
-      if (!isLoggedIn || !hasFeature("aiFixes")) {
-        setError(
-          "AI fixes are not available on your current plan. Please upgrade to access this feature.",
-        );
-        return;
-      }
-
-      setLoadingFixIndex(index);
-      try {
-        const res = await api.post("/scans/ai-fix", { title, description });
-        setAiFixes((prev) => ({ ...prev, [index]: res.data.remediation }));
-      } catch (err: any) {
-        if (err.response?.status === 401 || err.response?.status === 403) {
-          setIsLoggedIn(false);
-          setError("Session expired. Please log in to use AI features.");
-        } else {
-          setError(err.response?.data?.message || "Failed to generate AI fix.");
-        }
-      } finally {
-        setLoadingFixIndex(null);
-      }
-    },
-    [isLoggedIn, hasFeature],
-  );
-
-  // ✅ تحسين downloadReport
-  const downloadReport = useCallback(
-    async (type: "csv" | "pdf") => {
-      if (!isLoggedIn || !hasFeature("exportReports")) {
-        setError(
-          "Report export is not available on your current plan. Please upgrade to access this feature.",
-        );
-        return;
-      }
-
-      if (!scanResult?.id) {
-        setError("No valid scan ID found. Please re-run the scan.");
-        return;
-      }
-
-      setExporting(type);
-      try {
-        const response = await api.get(
-          `/scans/${scanResult.id}/export/${type}`,
-          {
-            responseType: "blob",
-          },
-        );
-
-        const url = window.URL.createObjectURL(new Blob([response.data]));
-        const link = document.createElement("a");
-        link.href = url;
-        link.setAttribute(
-          "download",
-          `SecureLens-Report-${scanResult.id}.${type}`,
-        );
-        document.body.appendChild(link);
-        link.click();
-        link.parentNode?.removeChild(link);
-        window.URL.revokeObjectURL(url);
-      } catch (error) {
-        setError(
-          `Failed to download the ${type.toUpperCase()} report. Please try again.`,
-        );
-      } finally {
-        setExporting(null);
-      }
-    },
-    [isLoggedIn, hasFeature, scanResult],
-  );
-
-  // ✅ تحسين toggleSection
-  const toggleSection = useCallback((section: string) => {
-    setExpandedSections((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(section)) {
-        newSet.delete(section);
-      } else {
-        newSet.add(section);
-      }
-      return newSet;
-    });
-  }, []);
-
-  // ✅ تصفية الثغرات
-  const filteredVulnerabilities = useMemo(() => {
-    if (!scanResult?.vulnerabilities) return [];
-    let vulns = [...scanResult.vulnerabilities];
-
-    if (scanFilters.severity !== "all") {
-      vulns = vulns.filter((v) => v.severity === scanFilters.severity);
-    }
-
-    if (scanFilters.category !== "all") {
-      vulns = vulns.filter((v) =>
-        v.title.toLowerCase().includes(scanFilters.category.toLowerCase()),
-      );
-    }
-
-    if (scanFilters.searchQuery) {
-      vulns = vulns.filter(
-        (v) =>
-          v.title
-            .toLowerCase()
-            .includes(scanFilters.searchQuery.toLowerCase()) ||
-          v.description
-            .toLowerCase()
-            .includes(scanFilters.searchQuery.toLowerCase()),
-      );
-    }
-
-    return vulns;
-  }, [scanResult, scanFilters]);
-
   const score = scanResult?.score ?? 0;
 
   const getScoreColor = (score: number) => {
@@ -684,12 +1230,6 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
     return "Needs Improvement";
   };
 
-  const getScoreIcon = (score: number) => {
-    if (score >= 80) return <Award className="h-5 w-5 text-emerald-400" />;
-    if (score >= 50) return <Shield className="h-5 w-5 text-amber-400" />;
-    return <AlertCircle className="h-5 w-5 text-rose-400" />;
-  };
-
   const gaugeData = [
     { name: "Score", value: score },
     { name: "Remaining", value: 100 - score },
@@ -703,83 +1243,6 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
     },
   ];
 
-  // ✅ عرض ميزات المستخدم
-  const renderUserPlanBadge = () => {
-    if (!isLoggedIn) return null;
-    return (
-      <div
-        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full ${userPlanFeatures.bgColor} border ${userPlanFeatures.borderColor}`}
-      >
-        <PlanIcon className={`h-3.5 w-3.5 ${userPlanFeatures.color}`} />
-        <span className={`text-xs font-semibold ${userPlanFeatures.color}`}>
-          {userPlanFeatures.name}
-        </span>
-        <span
-          className={`text-[8px] px-1.5 py-0.5 rounded-full ${userPlanFeatures.badgeColor}`}
-        >
-          {userPlanData.badge}
-        </span>
-      </div>
-    );
-  };
-
-  // ✅ عرض الميزات المتاحة
-  const renderFeatureBadge = (feature: keyof PlanFeatures, label: string) => {
-    const available = hasFeature(feature);
-    return (
-      <span
-        className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full ${
-          available
-            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-            : "bg-slate-800/50 text-slate-500 border border-slate-700"
-        }`}
-      >
-        {available ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
-        {label}
-      </span>
-    );
-  };
-
-  // ✅ عرض عداد الفحوصات حسب الخطة
-  const renderScanLimitInfo = () => {
-    if (isLoggedIn) {
-      const maxScans = getMaxScans(userPlan);
-      const maxScansNum = typeof maxScans === "number" ? maxScans : 0;
-
-      return (
-        <span className="text-xs text-slate-400">
-          {maxScansNum === Infinity ? (
-            <span className="flex items-center gap-1 text-purple-400">
-              <InfinityIcon className="h-3 w-3" />
-              Unlimited scans
-            </span>
-          ) : (
-            <span>{maxScansNum} scans per day</span>
-          )}
-        </span>
-      );
-    }
-    const remaining = MAX_GUEST_SCANS - guestScanCount;
-    return (
-      <span className="text-xs text-slate-400">
-        {remaining} / {MAX_GUEST_SCANS} free scans remaining today
-      </span>
-    );
-  };
-
-  const renderStatusBadge = (status: boolean, label: string) => (
-    <span
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-        status
-          ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-          : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
-      }`}
-    >
-      {status ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
-      {label}
-    </span>
-  );
-
   if (isCheckingAuth) {
     return (
       <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center">
@@ -791,12 +1254,14 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
     );
   }
 
+  // ============================================================
+  // 🖥️ RENDER
+  // ============================================================
   return (
     <div
       className="container mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-10 max-w-7xl space-y-6 sm:space-y-8"
       dir="ltr"
     >
-      {/* ✅ تحذير انتهاء الاشتراك */}
       {renderSubscriptionWarning()}
 
       {/* ✅ Banner: حالة المستخدم والخطة */}
@@ -812,7 +1277,7 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
                 <PlanIcon className={`h-5 w-5 ${userPlanFeatures.color}`} />
               </div>
               <div>
-                <p className="text-sm font-medium text-white flex items-center gap-2">
+                <p className="text-sm font-medium text-white flex items-center gap-2 flex-wrap">
                   {user?.name || "User"} •
                   <span className={userPlanFeatures.color}>
                     {userPlanFeatures.name} Plan
@@ -822,6 +1287,9 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
                       👑 Admin
                     </span>
                   )}
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800/50 text-slate-400 border border-slate-700">
+                    {renderScanLimitInfo()}
+                  </span>
                 </p>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                   {renderFeatureBadge("aiFixes", "AI Fixes")}
@@ -829,7 +1297,6 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
                   {renderFeatureBadge("exportReports", "Export Reports")}
                   {renderFeatureBadge("prioritySupport", "Priority Support")}
                   {renderFeatureBadge("apiAccess", "API Access")}
-                  {renderScanLimitInfo()}
                 </div>
               </div>
             </div>
@@ -878,6 +1345,8 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
 
       {/* Search Input Card */}
       <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-2xl backdrop-blur-md space-y-4">
+        {renderScanLimitWarning()}
+
         <form
           onSubmit={handleScanSubmit}
           className="flex flex-col sm:flex-row gap-3"
@@ -889,22 +1358,34 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
               value={inputUrl}
               onChange={(e) => setInputUrl(e.target.value)}
               placeholder="Enter domain or URL (e.g., example.com)"
-              className="w-full pl-10 sm:pl-11 pr-4 py-2.5 sm:py-3 rounded-xl bg-slate-950/80 border border-slate-800 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-sky-500 transition font-mono"
-              disabled={loading}
+              className="w-full pl-10 sm:pl-11 pr-4 py-2.5 sm:py-3 rounded-xl bg-slate-950/80 border border-slate-800 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-sky-500 transition font-mono disabled:opacity-50"
+              disabled={loading || getScanLimitStatus().isLimitReached}
             />
           </div>
 
           <button
             type="submit"
-            disabled={loading || !inputUrl || !canPerformScan()}
-            className="inline-flex items-center justify-center gap-2 px-5 sm:px-6 py-2.5 sm:py-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-sky-600/20 cursor-pointer whitespace-nowrap"
+            disabled={isScanButtonDisabled()}
+            className={`inline-flex items-center justify-center gap-2 px-5 sm:px-6 py-2.5 sm:py-3 rounded-xl text-white text-sm font-semibold transition shadow-lg whitespace-nowrap ${
+              isScanButtonDisabled()
+                ? "bg-slate-700 cursor-not-allowed opacity-50 shadow-none"
+                : "bg-sky-600 hover:bg-sky-500 shadow-sky-600/20 cursor-pointer"
+            }`}
           >
             {loading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
+            ) : getScanLimitStatus().isLimitReached ? (
+              <Clock className="h-4 w-4" />
             ) : (
               <ShieldCheck className="h-4 w-4" />
             )}
-            <span>{loading ? "Scanning..." : "Run Security Audit"}</span>
+            <span>
+              {loading
+                ? "Scanning..."
+                : getScanLimitStatus().isLimitReached
+                  ? "Limit Reached"
+                  : "Run Security Audit"}
+            </span>
           </button>
         </form>
 
@@ -915,7 +1396,10 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
                 type="checkbox"
                 checked={isDeepScan}
                 onChange={(e) => setIsDeepScan(e.target.checked)}
-                disabled={!hasFeature("deepScan") && isLoggedIn}
+                disabled={
+                  (!hasFeature("deepScan") && isLoggedIn) ||
+                  getScanLimitStatus().isLimitReached
+                }
                 className="rounded border-slate-800 bg-slate-950 text-sky-500 w-4 h-4 disabled:opacity-50"
               />
               <Zap className="h-3.5 w-3.5 text-amber-400" />
@@ -965,31 +1449,8 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
         </div>
       )}
 
-      {/* Error State */}
-      {error && !loading && (
-        <div className="p-6 sm:p-8 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-center space-y-3">
-          <AlertTriangle className="h-10 w-10 sm:h-12 sm:w-12 text-rose-400 mx-auto" />
-          <h2 className="text-lg font-bold text-rose-300">Audit Failed</h2>
-          <p className="text-sm text-slate-400">{error}</p>
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            <button
-              onClick={() => setError("")}
-              className="px-4 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-sm font-semibold transition"
-            >
-              Dismiss
-            </button>
-            {!isLoggedIn && guestScanCount >= MAX_GUEST_SCANS && (
-              <Link
-                href="/login"
-                className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold transition shadow-lg shadow-sky-600/20 inline-flex items-center gap-2"
-              >
-                <LogIn className="h-4 w-4" />
-                <span>Sign In for Unlimited Scans</span>
-              </Link>
-            )}
-          </div>
-        </div>
-      )}
+      {/* ✅ Error State */}
+      {error && !loading && renderErrorMessages()}
 
       {/* Results */}
       {scanResult && !loading && !error && (
@@ -1184,7 +1645,7 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
             </button>
           </div>
 
-          {/* Tab Content */}
+          {/* Tab Content - Overview */}
           {activeTab === "overview" ? (
             <div className="space-y-6">
               {/* Score & Headers */}
@@ -1316,257 +1777,242 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
               </div>
 
               {/* Deep Audit Details */}
-              {isDeepScan && hasFeature("deepScan") ? (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                      <Shield className="h-4 w-4 text-sky-400" />
-                      Deep Audit Details
-                    </h3>
-                    <span className="text-xs text-slate-500">
-                      {expandedSections.size} sections expanded
-                    </span>
-                  </div>
+              {isDeepScan ? (
+                hasFeature("deepScan") ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                        <Shield className="h-4 w-4 text-sky-400" />
+                        Deep Audit Details
+                      </h3>
+                      <span className="text-xs text-slate-500">
+                        {expandedSections.size} sections expanded
+                      </span>
+                    </div>
 
-                  <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
-                    {/* SSL/TLS Section */}
-                    <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-4">
-                      <button
-                        onClick={() => toggleSection("ssl")}
-                        className="w-full flex items-center justify-between border-b border-slate-800/80 pb-3"
-                      >
-                        <div className="flex items-center gap-2">
-                          <LockKeyhole className="h-5 w-5 text-sky-400" />
-                          <h3 className="text-sm font-bold text-white">
-                            SSL/TLS
-                          </h3>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {renderStatusBadge(
-                            scanResult?.ssl?.valid,
-                            scanResult?.ssl?.valid ? "Valid" : "Invalid",
-                          )}
-                          {expandedSections.has("ssl") ? (
-                            <ChevronDown className="h-4 w-4 text-slate-400" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4 text-slate-400" />
-                          )}
-                        </div>
-                      </button>
+                    <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
+                      {/* SSL/TLS Section */}
+                      <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-4">
+                        <button
+                          onClick={() => toggleSection("ssl")}
+                          className="w-full flex items-center justify-between border-b border-slate-800/80 pb-3"
+                        >
+                          <div className="flex items-center gap-2">
+                            <LockKeyhole className="h-5 w-5 text-sky-400" />
+                            <h3 className="text-sm font-bold text-white">
+                              SSL/TLS
+                            </h3>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {renderStatusBadge(
+                              scanResult?.ssl?.valid,
+                              scanResult?.ssl?.valid ? "Valid" : "Invalid",
+                            )}
+                            {expandedSections.has("ssl") ? (
+                              <ChevronDown className="h-4 w-4 text-slate-400" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4 text-slate-400" />
+                            )}
+                          </div>
+                        </button>
 
-                      {expandedSections.has("ssl") && scanResult?.ssl && (
-                        <div className="space-y-2 text-xs font-mono">
-                          <div className="flex flex-col sm:flex-row justify-between py-1.5 border-b border-slate-800/40">
-                            <span className="text-slate-400">Issuer:</span>
+                        {expandedSections.has("ssl") && scanResult?.ssl && (
+                          <div className="space-y-2 text-xs font-mono">
+                            <div className="flex flex-col sm:flex-row justify-between py-1.5 border-b border-slate-800/40">
+                              <span className="text-slate-400">Issuer:</span>
+                              <span
+                                className="text-slate-200 truncate"
+                                title={scanResult.ssl.issuer}
+                              >
+                                {scanResult.ssl.issuer || "Unknown"}
+                              </span>
+                            </div>
+                            <div className="flex flex-col sm:flex-row justify-between py-1.5 border-b border-slate-800/40">
+                              <span className="text-slate-400">Protocol:</span>
+                              <span className="text-sky-400 font-bold">
+                                {scanResult.ssl.protocol || "TLS 1.2/1.3"}
+                              </span>
+                            </div>
+                            <div className="flex flex-col sm:flex-row justify-between py-1.5 border-b border-slate-800/40">
+                              <span className="text-slate-400">
+                                Valid From:
+                              </span>
+                              <span className="text-slate-200">
+                                {scanResult.ssl.validFrom
+                                  ? new Date(
+                                      scanResult.ssl.validFrom,
+                                    ).toLocaleDateString()
+                                  : "N/A"}
+                              </span>
+                            </div>
+                            <div className="flex flex-col sm:flex-row justify-between py-1.5">
+                              <span className="text-slate-400">
+                                Days Remaining:
+                              </span>
+                              <span
+                                className={`font-bold ${
+                                  scanResult.ssl.daysRemaining < 30
+                                    ? "text-amber-400"
+                                    : "text-emerald-400"
+                                }`}
+                              >
+                                {scanResult.ssl.daysRemaining ?? "N/A"} Days
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* CORS Section */}
+                      <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-4">
+                        <button
+                          onClick={() => toggleSection("cors")}
+                          className="w-full flex items-center justify-between border-b border-slate-800/80 pb-3"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Globe className="h-5 w-5 text-indigo-400" />
+                            <h3 className="text-sm font-bold text-white">
+                              CORS Policy
+                            </h3>
+                          </div>
+                          <div className="flex items-center gap-2">
                             <span
-                              className="text-slate-200 truncate"
-                              title={scanResult.ssl.issuer}
-                            >
-                              {scanResult.ssl.issuer || "Unknown"}
-                            </span>
-                          </div>
-                          <div className="flex flex-col sm:flex-row justify-between py-1.5 border-b border-slate-800/40">
-                            <span className="text-slate-400">Protocol:</span>
-                            <span className="text-sky-400 font-bold">
-                              {scanResult.ssl.protocol || "TLS 1.2/1.3"}
-                            </span>
-                          </div>
-                          <div className="flex flex-col sm:flex-row justify-between py-1.5 border-b border-slate-800/40">
-                            <span className="text-slate-400">Valid From:</span>
-                            <span className="text-slate-200">
-                              {scanResult.ssl.validFrom
-                                ? new Date(
-                                    scanResult.ssl.validFrom,
-                                  ).toLocaleDateString()
-                                : "N/A"}
-                            </span>
-                          </div>
-                          <div className="flex flex-col sm:flex-row justify-between py-1.5">
-                            <span className="text-slate-400">
-                              Days Remaining:
-                            </span>
-                            <span
-                              className={`font-bold ${
-                                scanResult.ssl.daysRemaining < 30
-                                  ? "text-amber-400"
-                                  : "text-emerald-400"
+                              className={`px-2.5 py-0.5 rounded text-[10px] font-bold ${
+                                scanResult?.cors?.riskLevel === "HIGH"
+                                  ? "bg-rose-500/20 text-rose-400 border border-rose-500/30"
+                                  : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
                               }`}
                             >
-                              {scanResult.ssl.daysRemaining ?? "N/A"} Days
+                              {scanResult?.cors?.riskLevel || "SECURE"}
                             </span>
+                            {expandedSections.has("cors") ? (
+                              <ChevronDown className="h-4 w-4 text-slate-400" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4 text-slate-400" />
+                            )}
                           </div>
-                        </div>
-                      )}
-                    </div>
+                        </button>
 
-                    {/* CORS Section */}
-                    <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-4">
-                      <button
-                        onClick={() => toggleSection("cors")}
-                        className="w-full flex items-center justify-between border-b border-slate-800/80 pb-3"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Globe className="h-5 w-5 text-indigo-400" />
-                          <h3 className="text-sm font-bold text-white">
-                            CORS Policy
-                          </h3>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`px-2.5 py-0.5 rounded text-[10px] font-bold ${
-                              scanResult?.cors?.riskLevel === "HIGH"
-                                ? "bg-rose-500/20 text-rose-400 border border-rose-500/30"
-                                : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                            }`}
-                          >
-                            {scanResult?.cors?.riskLevel || "SECURE"}
-                          </span>
-                          {expandedSections.has("cors") ? (
-                            <ChevronDown className="h-4 w-4 text-slate-400" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4 text-slate-400" />
-                          )}
-                        </div>
-                      </button>
-
-                      {expandedSections.has("cors") && scanResult?.cors && (
-                        <div className="space-y-2 text-xs font-mono">
-                          <div className="flex flex-col gap-1 py-1.5 border-b border-slate-800/40">
-                            <span className="text-slate-400">
-                              Access-Control-Allow-Origin:
-                            </span>
-                            <span
-                              className={`${
-                                scanResult.cors.allowOrigin === "*"
-                                  ? "text-rose-400 font-bold"
-                                  : "text-slate-200"
-                              }`}
-                            >
-                              {scanResult.cors.allowOrigin ||
-                                "Not Set (Strict)"}
-                            </span>
+                        {expandedSections.has("cors") && scanResult?.cors && (
+                          <div className="space-y-2 text-xs font-mono">
+                            <div className="flex flex-col gap-1 py-1.5 border-b border-slate-800/40">
+                              <span className="text-slate-400">
+                                Access-Control-Allow-Origin:
+                              </span>
+                              <span
+                                className={`${
+                                  scanResult.cors.allowOrigin === "*"
+                                    ? "text-rose-400 font-bold"
+                                    : "text-slate-200"
+                                }`}
+                              >
+                                {scanResult.cors.allowOrigin ||
+                                  "Not Set (Strict)"}
+                              </span>
+                            </div>
+                            <div className="flex flex-col sm:flex-row justify-between py-1.5 border-b border-slate-800/40">
+                              <span className="text-slate-400">
+                                Allow-Credentials:
+                              </span>
+                              <span className="text-slate-200">
+                                {scanResult.cors.allowCredentials
+                                  ? "true"
+                                  : "false/undefined"}
+                              </span>
+                            </div>
+                            <div className="flex flex-col sm:flex-row justify-between py-1.5">
+                              <span className="text-slate-400">
+                                Allow-Methods:
+                              </span>
+                              <span className="text-slate-200">
+                                {scanResult.cors.allowMethods || "Not Set"}
+                              </span>
+                            </div>
                           </div>
-                          <div className="flex flex-col sm:flex-row justify-between py-1.5 border-b border-slate-800/40">
-                            <span className="text-slate-400">
-                              Allow-Credentials:
-                            </span>
-                            <span className="text-slate-200">
-                              {scanResult.cors.allowCredentials
-                                ? "true"
-                                : "false/undefined"}
-                            </span>
-                          </div>
-                          <div className="flex flex-col sm:flex-row justify-between py-1.5">
-                            <span className="text-slate-400">
-                              Allow-Methods:
-                            </span>
-                            <span className="text-slate-200">
-                              {scanResult.cors.allowMethods || "Not Set"}
-                            </span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                        )}
+                      </div>
 
-                    {/* Cookies Section */}
-                    <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-4">
-                      <button
-                        onClick={() => toggleSection("cookies")}
-                        className="w-full flex items-center justify-between border-b border-slate-800/80 pb-3"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Cookie className="h-5 w-5 text-amber-500" />
-                          <h3 className="text-sm font-bold text-white">
-                            Cookies
-                          </h3>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] text-slate-400">
-                            {scanResult?.cookies?.length || 0} found
-                          </span>
-                          {expandedSections.has("cookies") ? (
-                            <ChevronDown className="h-4 w-4 text-slate-400" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4 text-slate-400" />
-                          )}
-                        </div>
-                      </button>
+                      {/* Cookies Section */}
+                      <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-4">
+                        <button
+                          onClick={() => toggleSection("cookies")}
+                          className="w-full flex items-center justify-between border-b border-slate-800/80 pb-3"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Cookie className="h-5 w-5 text-amber-500" />
+                            <h3 className="text-sm font-bold text-white">
+                              Cookies
+                            </h3>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-slate-400">
+                              {scanResult?.cookies?.length || 0} found
+                            </span>
+                            {expandedSections.has("cookies") ? (
+                              <ChevronDown className="h-4 w-4 text-slate-400" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4 text-slate-400" />
+                            )}
+                          </div>
+                        </button>
 
-                      {expandedSections.has("cookies") && (
-                        <div className="space-y-3">
-                          {scanResult?.cookies &&
-                          scanResult.cookies.length > 0 ? (
-                            scanResult.cookies
-                              .slice(0, 4)
-                              .map((cookie: any, i: number) => (
-                                <div
-                                  key={i}
-                                  className="text-xs font-mono border-b border-slate-800/40 pb-2 last:border-0"
-                                >
-                                  <div className="text-slate-200 truncate mb-1">
-                                    {cookie.name}
-                                  </div>
-                                  <div className="flex flex-wrap gap-1 text-[9px]">
-                                    <span
-                                      className={`px-1.5 py-0.5 rounded ${
-                                        cookie.httpOnly
-                                          ? "bg-emerald-500/20 text-emerald-400"
-                                          : "bg-rose-500/20 text-rose-400"
-                                      }`}
-                                    >
-                                      {cookie.httpOnly ? "✓" : "✕"} HttpOnly
-                                    </span>
-                                    <span
-                                      className={`px-1.5 py-0.5 rounded ${
-                                        cookie.secure
-                                          ? "bg-emerald-500/20 text-emerald-400"
-                                          : "bg-rose-500/20 text-rose-400"
-                                      }`}
-                                    >
-                                      {cookie.secure ? "✓" : "✕"} Secure
-                                    </span>
-                                    <span
-                                      className={`px-1.5 py-0.5 rounded ${
-                                        cookie.sameSite &&
-                                        cookie.sameSite !== "None"
-                                          ? "bg-emerald-500/20 text-emerald-400"
-                                          : "bg-amber-500/20 text-amber-400"
-                                      }`}
-                                    >
-                                      SameSite: {cookie.sameSite || "None"}
-                                    </span>
-                                  </div>
-                                </div>
-                              ))
-                          ) : (
-                            <p className="text-xs text-slate-500">
-                              No session cookies detected.
-                            </p>
-                          )}
-                        </div>
-                      )}
+                        {expandedSections.has("cookies") && renderCookiesData()}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ) : isLoggedIn && !hasFeature("deepScan") ? (
-                <div className="p-8 text-center bg-slate-900/50 border border-slate-800 rounded-2xl">
-                  <Lock className="h-12 w-12 text-slate-500 mx-auto mb-3" />
-                  <h3 className="text-lg font-bold text-white">
-                    Deep Scan Locked
-                  </h3>
+                ) : (
+                  <div className="p-6 rounded-2xl bg-slate-900/50 border border-amber-500/20">
+                    <div className="flex flex-col items-center text-center space-y-3">
+                      <div className="p-3 rounded-full bg-amber-500/10 border border-amber-500/20">
+                        <Lock className="h-8 w-8 text-amber-400" />
+                      </div>
+                      <h3 className="text-lg font-bold text-white">
+                        Deep Audit Locked
+                      </h3>
+                      <p className="text-sm text-slate-400 max-w-md">
+                        Deep audit features (SSL/TLS, CORS, and Cookie analysis)
+                        are only available on{" "}
+                        <span className="text-sky-400 font-semibold">Pro</span>{" "}
+                        and{" "}
+                        <span className="text-purple-400 font-semibold">
+                          Extra
+                        </span>{" "}
+                        plans.
+                      </p>
+                      <div className="flex items-center gap-3 mt-1">
+                        <Link
+                          href="/subscription"
+                          className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-400 text-white text-sm font-semibold transition shadow-lg shadow-sky-500/20 inline-flex items-center gap-2"
+                        >
+                          <Crown className="h-4 w-4" />
+                          <span>Upgrade to Unlock</span>
+                        </Link>
+                        <button
+                          onClick={() => setIsDeepScan(false)}
+                          className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition"
+                        >
+                          <X className="h-4 w-4 inline mr-1" />
+                          Close
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              ) : (
+                <div className="p-4 rounded-xl bg-slate-900/30 border border-slate-800 text-center">
                   <p className="text-sm text-slate-400">
-                    Upgrade to Pro or Extra plan to access deep audit features
-                    including SSL/TLS, CORS, and Cookie analysis.
+                    <Zap className="h-4 w-4 inline mr-1 text-amber-400" />
+                    Enable Deep Scan for detailed SSL/TLS, CORS, and Cookie
+                    analysis
+                    {!hasFeature("deepScan") && isLoggedIn && (
+                      <span className="block text-xs text-slate-500 mt-1">
+                        Available on <span className="text-sky-400">Pro</span>{" "}
+                        and <span className="text-purple-400">Extra</span> plans
+                      </span>
+                    )}
                   </p>
-                  <Link
-                    href="/subscription"
-                    className="inline-block mt-4 px-4 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-400 text-white text-sm font-semibold transition shadow-lg shadow-sky-500/20"
-                  >
-                    <Crown className="h-4 w-4 inline mr-1" />
-                    Upgrade Now
-                  </Link>
                 </div>
-              ) : null}
+              )}
 
               {/* Quick Stats */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
@@ -1639,7 +2085,7 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
                   )}
                 </div>
 
-                {/* ✅ Filters for vulnerabilities */}
+                {/* Filters for vulnerabilities */}
                 {filteredVulnerabilities.length > 0 && (
                   <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl bg-slate-950/50 border border-slate-800">
                     <Filter className="h-3.5 w-3.5 text-slate-400" />
@@ -1861,7 +2307,7 @@ export default function ScanPage() {
         <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center">
           <div className="flex flex-col items-center gap-3">
             <Loader2 className="h-8 w-8 text-sky-400 animate-spin" />
-            <p className="text-sm text-slate-400">Loading...</p>
+            <p className="text-xs sm:text-sm text-slate-400">Loading...</p>
           </div>
         </div>
       }

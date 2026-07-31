@@ -113,17 +113,17 @@ export const PLAN_FEATURES: Record<PlanType, PlanFeatures> = {
     badge: "Starter",
     badgeColor: "text-slate-400 bg-slate-800/50",
     historyRetention: 7,
-    maxScans: 5,
+    maxScans: 5, 
     exportReports: true,
-    aiFixes: false,
-    deepScan: false,
+    aiFixes: false, 
+    deepScan: true, 
     prioritySupport: false,
     maxWebsites: 1,
     teamMembers: 1,
     apiAccess: false,
     customRules: false,
-    auditLogs: false, // ✅ إضافة
-    whiteLabel: false, // ✅ إضافة
+    auditLogs: false,
+    whiteLabel: false,
   },
   pro: {
     name: "Pro",
@@ -143,8 +143,8 @@ export const PLAN_FEATURES: Record<PlanType, PlanFeatures> = {
     teamMembers: 10,
     apiAccess: true,
     customRules: true,
-    auditLogs: true, // ✅ إضافة
-    whiteLabel: false, // ✅ إضافة
+    auditLogs: true,
+    whiteLabel: false,
   },
   extra: {
     name: "Extra",
@@ -164,8 +164,8 @@ export const PLAN_FEATURES: Record<PlanType, PlanFeatures> = {
     teamMembers: Infinity,
     apiAccess: true,
     customRules: true,
-    auditLogs: true, // ✅ إضافة
-    whiteLabel: true, // ✅ إضافة
+    auditLogs: true,
+    whiteLabel: true,
   },
 };
 

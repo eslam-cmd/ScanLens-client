@@ -1,4 +1,5 @@
 // client/app/admin/payments/page.tsx
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -106,6 +107,7 @@ export default function AdminPaymentsPage() {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const router = useRouter();
 
   // ✅ حالة الاشتراك والعداد
@@ -316,17 +318,34 @@ export default function AdminPaymentsPage() {
   // ✅ جلب المدفوعات
   const fetchPayments = async () => {
     setRefreshing(true);
+    setError("");
     try {
       const res = await api.get("/admin/payments", { withCredentials: true });
-      setPayments(res.data);
-      // حساب الإحصائيات
-      calculateStats(res.data);
+
+      // ✅ التأكد من أن البيانات تأتي بالشكل الصحيح
+      let paymentsData = res.data;
+
+      // ✅ إذا كانت البيانات في property data
+      if (res.data && res.data.data && Array.isArray(res.data.data)) {
+        paymentsData = res.data.data;
+      } else if (!Array.isArray(res.data)) {
+        // ✅ إذا كانت البيانات object وليست array
+        paymentsData = [];
+        console.warn("⚠️ Payments data is not an array:", res.data);
+      }
+
+      setPayments(paymentsData);
+      calculateStats(paymentsData);
     } catch (err: any) {
       console.error("Failed to fetch payments:", err);
       if (err.response?.status === 403) {
         router.push("/");
+      } else if (err.response?.status === 404) {
+        setError(
+          "Payments endpoint not found. Please check server configuration.",
+        );
       } else {
-        setError("Failed to load payments data");
+        setError(err.response?.data?.message || "Failed to load payments data");
       }
     } finally {
       setLoading(false);
@@ -336,6 +355,20 @@ export default function AdminPaymentsPage() {
 
   // ✅ حساب الإحصائيات
   const calculateStats = (data: Payment[]) => {
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      setStats({
+        totalRevenue: 0,
+        totalPayments: 0,
+        successfulPayments: 0,
+        failedPayments: 0,
+        refundedPayments: 0,
+        pendingPayments: 0,
+        averageAmount: 0,
+        monthlyRevenue: [],
+      });
+      return;
+    }
+
     const successful = data.filter((p) => p.status === "SUCCEEDED");
     const failed = data.filter((p) => p.status === "FAILED");
     const refunded = data.filter((p) => p.status === "REFUNDED");
@@ -381,9 +414,43 @@ export default function AdminPaymentsPage() {
     fetchPayments();
   }, []);
 
+  // ✅ تصدير المدفوعات كـ CSV
+  const handleExportCsv = async () => {
+    setExporting(true);
+    setError("");
+    try {
+      const response = await api.get("/admin/payments/export/csv", {
+        withCredentials: true,
+        responseType: "blob",
+      });
+
+      const url = window.URL.createObjectURL(
+        new Blob([response.data], { type: "text/csv" }),
+      );
+      const link = document.createElement("a");
+      link.href = url;
+      const timestamp = new Date().toISOString().slice(0, 10);
+      link.setAttribute("download", `payments_export_${timestamp}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      setSuccess("✅ Payments exported successfully!");
+      setTimeout(() => setSuccess(""), 3000);
+    } catch (err: any) {
+      console.error("Failed to export payments:", err);
+      setError(err.response?.data?.message || "Failed to export payments");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // ✅ تصفية المدفوعات
-  const filteredPayments = payments
-    .filter((payment) => {
+  const filteredPayments = useMemo(() => {
+    if (!payments || !Array.isArray(payments)) return [];
+
+    let result = payments.filter((payment) => {
       const matchesSearch =
         payment.user?.email
           ?.toLowerCase()
@@ -393,8 +460,9 @@ export default function AdminPaymentsPage() {
       const matchesStatus =
         filterStatus === "all" || payment.status === filterStatus;
       return matchesSearch && matchesStatus;
-    })
-    .sort((a, b) => {
+    });
+
+    result.sort((a, b) => {
       if (sortBy === "date") {
         return sortOrder === "desc"
           ? new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -403,6 +471,9 @@ export default function AdminPaymentsPage() {
         return sortOrder === "desc" ? b.amount - a.amount : a.amount - b.amount;
       }
     });
+
+    return result;
+  }, [payments, searchQuery, filterStatus, sortBy, sortOrder]);
 
   // ✅ تنسيق العملة
   const formatCurrency = (amount: number) => {
@@ -485,6 +556,26 @@ export default function AdminPaymentsPage() {
       {/* ✅ تحذير انتهاء الاشتراك (لغير الأدمن الرئيسي) */}
       {renderSubscriptionWarning()}
 
+      {/* ✅ رسالة نجاح */}
+      {success && (
+        <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 mb-6">
+          <p className="text-sm text-emerald-400 flex items-center gap-2">
+            <CheckCircle className="h-5 w-5" />
+            {success}
+          </p>
+        </div>
+      )}
+
+      {/* ✅ رسالة خطأ */}
+      {error && (
+        <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 mb-6">
+          <p className="text-sm text-rose-400 flex items-center gap-2">
+            <AlertCircle className="h-5 w-5" />
+            {error}
+          </p>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-3">
@@ -511,16 +602,30 @@ export default function AdminPaymentsPage() {
             </p>
           </div>
         </div>
-        <button
-          onClick={fetchPayments}
-          disabled={refreshing}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition disabled:opacity-50"
-        >
-          <RefreshCw
-            className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
-          />
-          <span>Refresh</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportCsv}
+            disabled={exporting || payments.length === 0}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold transition shadow-lg shadow-sky-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {exporting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            <span>{exporting ? "Exporting..." : "Export CSV"}</span>
+          </button>
+          <button
+            onClick={fetchPayments}
+            disabled={refreshing}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition disabled:opacity-50"
+          >
+            <RefreshCw
+              className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+            />
+            <span>Refresh</span>
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -577,7 +682,7 @@ export default function AdminPaymentsPage() {
         </div>
       )}
 
-      {/* Monthly Revenue Chart - Simplified */}
+      {/* Monthly Revenue Chart */}
       {stats && stats.monthlyRevenue.length > 0 && (
         <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 mb-6">
           <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
@@ -781,7 +886,9 @@ export default function AdminPaymentsPage() {
             <CreditCard className="h-12 w-12 text-slate-600 mx-auto mb-3" />
             <p className="text-sm text-slate-400">No payments found</p>
             <p className="text-xs text-slate-500 mt-1">
-              Try adjusting your filters or search query
+              {searchQuery || filterStatus !== "all"
+                ? "Try adjusting your filters or search query"
+                : "No payment records exist yet"}
             </p>
           </div>
         )}
@@ -920,7 +1027,7 @@ export default function AdminPaymentsPage() {
               </button>
               <button
                 onClick={() => {
-                  // يمكن إضافة وظيفة طباعة أو تصدير
+                  window.print();
                 }}
                 className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold transition shadow-lg shadow-sky-500/20"
               >

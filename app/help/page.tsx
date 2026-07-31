@@ -65,7 +65,7 @@ export default function HelpPage() {
   }, []);
 
   const handleCopyEmail = () => {
-    navigator.clipboard.writeText("support@securelens.dev");
+    navigator.clipboard.writeText("hdayaaslam34@gmail.com");
     setCopiedEmail(true);
     setTimeout(() => setCopiedEmail(false), 2000);
   };
@@ -301,7 +301,7 @@ export default function HelpPage() {
             </p>
             <div className="flex items-center gap-2">
               <span className="text-sm font-mono text-slate-200">
-                support@securelens.dev
+                hdayaaslam34@gmail.com
               </span>
               <button
                 onClick={handleCopyEmail}

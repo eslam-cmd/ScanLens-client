@@ -31,6 +31,9 @@ import {
   Lock,
   Timer,
   AlertCircle,
+  HardDrive,
+  CheckCircle2,
+  Database,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import ScanDetailModal from "./ScanDetailModal";
@@ -659,6 +662,16 @@ export default function HistoryPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
+  // ✅ Storage Stats State
+  const [storageStats, setStorageStats] = useState<{
+    totalScans: number;
+    expiredScans: number;
+    retentionDays: number | typeof Infinity;
+    isPermanent: boolean;
+  } | null>(null);
+  const [cleaning, setCleaning] = useState(false);
+  const [showStorageInfo, setShowStorageInfo] = useState(true);
+
   // ✅ جلب بيانات المستخدم والخطة
   useEffect(() => {
     const checkAuth = async () => {
@@ -686,7 +699,7 @@ export default function HistoryPage() {
               const expiryDate = new Date(expiresAt);
               const now = new Date();
               const daysRemaining = Math.ceil(
-                (expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+                (expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
               );
               setSubscription({
                 expiresAt,
@@ -730,7 +743,9 @@ export default function HistoryPage() {
       }
 
       const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const hours = Math.floor(
+        (diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60),
+      );
       const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
       const seconds = Math.floor((diff % (1000 * 60)) / 1000);
 
@@ -739,114 +754,6 @@ export default function HistoryPage() {
 
     return () => clearInterval(interval);
   }, [subscription?.expiresAt]);
-
-  // ✅ عرض تحذير انتهاء الاشتراك
-  const renderSubscriptionWarning = () => {
-    if (!isLoggedIn || userRole === "admin") return null;
-    if (!subscription?.isExpiring || !subscription?.expiresAt) return null;
-
-    const isExpired = subscription.daysRemaining <= 0;
-    const isCritical = subscription.daysRemaining <= 3;
-
-    if (isExpired) {
-      return (
-        <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 mb-4 animate-pulse">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <div className="flex items-start gap-3">
-              <div className="p-2 rounded-xl bg-rose-500/20 flex-shrink-0">
-                <AlertTriangle className="h-6 w-6 text-rose-400" />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-rose-400 flex items-center gap-2">
-                  ⚠️ Subscription Expired
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30">
-                    Action Required
-                  </span>
-                </p>
-                <p className="text-xs text-slate-400">
-                  Your plan has expired. Renew now to continue accessing your
-                  scan history and premium features.
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowUpgradeModal(true)}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white text-xs font-semibold transition shadow-lg shadow-rose-500/20 whitespace-nowrap"
-            >
-              🔄 Renew Subscription
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div
-        className={`p-4 rounded-2xl border ${
-          isCritical
-            ? "bg-amber-500/10 border-amber-500/30"
-            : "bg-amber-500/5 border-amber-500/20"
-        } mb-4`}
-      >
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <div
-              className={`p-2 rounded-xl ${
-                isCritical ? "bg-amber-500/20" : "bg-amber-500/10"
-              } flex-shrink-0`}
-            >
-              <Calendar
-                className={`h-6 w-6 ${
-                  isCritical ? "text-amber-400" : "text-amber-300"
-                }`}
-              />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-white flex items-center gap-2">
-                {isCritical ? "⚠️ Subscription Expiring Soon!" : "⏳ Subscription Expiring"}
-                <span
-                  className={`text-[10px] px-2 py-0.5 rounded-full ${
-                    isCritical
-                      ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
-                      : "bg-amber-500/10 text-amber-300 border border-amber-500/20"
-                  }`}
-                >
-                  {subscription.daysRemaining} days left
-                </span>
-              </p>
-              <p className="text-xs text-slate-400">
-                Your plan will expire in{" "}
-                <span className="text-amber-400 font-semibold">
-                  {subscription.daysRemaining} days
-                </span>
-                . Renew now to avoid losing access to your scan history.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {timeLeft && (
-              <div className="flex items-center gap-1 bg-slate-950/50 px-3 py-1.5 rounded-lg border border-slate-800">
-                <Timer className="h-3.5 w-3.5 text-amber-400" />
-                <span className="text-xs font-mono text-amber-400">
-                  {timeLeft.days}d {timeLeft.hours}h {timeLeft.minutes}m {timeLeft.seconds}s
-                </span>
-              </div>
-            )}
-            <button
-              onClick={() => setShowUpgradeModal(true)}
-              className={`px-4 py-2 rounded-xl text-white text-xs font-semibold transition whitespace-nowrap shadow-lg ${
-                isCritical
-                  ? "bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 shadow-amber-500/20"
-                  : "bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-400 shadow-sky-500/20"
-              }`}
-            >
-              {isCritical ? "🔴 Renew Now" : "🔄 Renew"}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   // ✅ الحصول على ميزات الخطة من الملف المركزي
   const planFeatures = useMemo(() => {
@@ -906,7 +813,7 @@ export default function HistoryPage() {
     return true;
   }, [canDelete]);
 
-  // Fetch Data
+  // ✅ جلب الفحوصات
   const fetchHistory = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -920,9 +827,92 @@ export default function HistoryPage() {
     }
   }, []);
 
+  // ✅ جلب إحصائيات التخزين
+  const fetchStorageStats = useCallback(async () => {
+    if (!isLoggedIn) return;
+    try {
+      const res = await api.get("/scans/storage-stats", {
+        withCredentials: true,
+      });
+      setStorageStats(res.data);
+    } catch (err) {
+      console.error("Failed to fetch storage stats:", err);
+    }
+  }, [isLoggedIn]);
+
+  // ✅ تنظيف الفحوصات المنتهية يدوياً
+  const handleManualCleanup = useCallback(async () => {
+    if (!isLoggedIn) return;
+
+    try {
+      setCleaning(true);
+      const res = await api.delete("/scans/user/clean-expired", {
+        withCredentials: true,
+      });
+
+      // ✅ تحديث البيانات
+      await fetchHistory();
+      await fetchStorageStats();
+
+      // ✅ عرض رسالة نجاح
+      const deletedCount = res.data?.deleted || 0;
+      if (deletedCount > 0) {
+        setActionErrorModal(
+          `✅ Successfully deleted ${deletedCount} expired scan${
+            deletedCount > 1 ? "s" : ""
+          }`,
+        );
+      } else {
+        setActionErrorModal("✅ No expired scans to delete");
+      }
+    } catch (err: any) {
+      setActionErrorModal(
+        err.response?.data?.message || "Failed to clean expired scans",
+      );
+    } finally {
+      setCleaning(false);
+    }
+  }, [isLoggedIn, fetchHistory, fetchStorageStats]);
+
+  // ✅ تنظيف شامل (للمدير فقط)
+  const handleAdminCleanup = useCallback(async () => {
+    if (userRole !== "admin") return;
+
+    if (
+      !confirm(
+        "⚠️ This will delete ALL expired scans for ALL users. Are you sure?",
+      )
+    )
+      return;
+
+    try {
+      setCleaning(true);
+      const res = await api.delete("/scans/clean-expired", {
+        withCredentials: true,
+      });
+      await fetchHistory();
+      await fetchStorageStats();
+      setActionErrorModal(
+        `✅ Cleanup complete: ${res.data.totalDeleted} scans deleted`,
+      );
+    } catch (err: any) {
+      setActionErrorModal(
+        err.response?.data?.message || "Failed to clean expired scans",
+      );
+    } finally {
+      setCleaning(false);
+    }
+  }, [userRole, fetchHistory, fetchStorageStats]);
+
   useEffect(() => {
     fetchHistory();
   }, [fetchHistory]);
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      fetchStorageStats();
+    }
+  }, [isLoggedIn, fetchStorageStats]);
 
   // ✅ تصفية الفحوصات
   const filteredScans = useMemo(() => {
@@ -1076,6 +1066,117 @@ export default function HistoryPage() {
     }
   };
 
+  // ✅ عرض تحذير انتهاء الاشتراك
+  const renderSubscriptionWarning = () => {
+    if (!isLoggedIn || userRole === "admin") return null;
+    if (!subscription?.isExpiring || !subscription?.expiresAt) return null;
+
+    const isExpired = subscription.daysRemaining <= 0;
+    const isCritical = subscription.daysRemaining <= 3;
+
+    if (isExpired) {
+      return (
+        <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 mb-4 animate-pulse">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-xl bg-rose-500/20 flex-shrink-0">
+                <AlertTriangle className="h-6 w-6 text-rose-400" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-rose-400 flex items-center gap-2">
+                  ⚠️ Subscription Expired
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                    Action Required
+                  </span>
+                </p>
+                <p className="text-xs text-slate-400">
+                  Your plan has expired. Renew now to continue accessing your
+                  scan history and premium features.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowUpgradeModal(true)}
+              className="px-4 py-2 rounded-xl bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white text-xs font-semibold transition shadow-lg shadow-rose-500/20 whitespace-nowrap"
+            >
+              🔄 Renew Subscription
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div
+        className={`p-4 rounded-2xl border ${
+          isCritical
+            ? "bg-amber-500/10 border-amber-500/30"
+            : "bg-amber-500/5 border-amber-500/20"
+        } mb-4`}
+      >
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div
+              className={`p-2 rounded-xl ${
+                isCritical ? "bg-amber-500/20" : "bg-amber-500/10"
+              } flex-shrink-0`}
+            >
+              <Calendar
+                className={`h-6 w-6 ${
+                  isCritical ? "text-amber-400" : "text-amber-300"
+                }`}
+              />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-white flex items-center gap-2">
+                {isCritical
+                  ? "⚠️ Subscription Expiring Soon!"
+                  : "⏳ Subscription Expiring"}
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded-full ${
+                    isCritical
+                      ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                      : "bg-amber-500/10 text-amber-300 border border-amber-500/20"
+                  }`}
+                >
+                  {subscription.daysRemaining} days left
+                </span>
+              </p>
+              <p className="text-xs text-slate-400">
+                Your plan will expire in{" "}
+                <span className="text-amber-400 font-semibold">
+                  {subscription.daysRemaining} days
+                </span>
+                . Renew now to avoid losing access to your scan history.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {timeLeft && (
+              <div className="flex items-center gap-1 bg-slate-950/50 px-3 py-1.5 rounded-lg border border-slate-800">
+                <Timer className="h-3.5 w-3.5 text-amber-400" />
+                <span className="text-xs font-mono text-amber-400">
+                  {timeLeft.days}d {timeLeft.hours}h {timeLeft.minutes}m{" "}
+                  {timeLeft.seconds}s
+                </span>
+              </div>
+            )}
+            <button
+              onClick={() => setShowUpgradeModal(true)}
+              className={`px-4 py-2 rounded-xl text-white text-xs font-semibold transition whitespace-nowrap shadow-lg ${
+                isCritical
+                  ? "bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 shadow-amber-500/20"
+                  : "bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-400 shadow-sky-500/20"
+              }`}
+            >
+              {isCritical ? "🔴 Renew Now" : "🔄 Renew"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // ✅ عرض معلومات الخطة
   const renderPlanBanner = () => {
     if (!isLoggedIn) {
@@ -1120,7 +1221,7 @@ export default function HistoryPage() {
                   </span>
                 )}
               </p>
-              <p className="text-xs text-slate-400 flex items-center gap-2">
+              <p className="text-xs text-slate-400 flex items-center gap-2 flex-wrap">
                 <span>History Retention: {retentionText}</span>
                 <span className="text-slate-600">•</span>
                 <span>
@@ -1158,6 +1259,132 @@ export default function HistoryPage() {
     );
   };
 
+  // ✅ عرض معلومات التخزين
+  const renderStorageInfo = () => {
+    if (!isLoggedIn || !storageStats) return null;
+    if (!showStorageInfo) return null;
+
+    const { totalScans, expiredScans, retentionDays, isPermanent } =
+      storageStats;
+
+    if (totalScans === 0) return null;
+
+    const retentionText = isPermanent ? "Permanent" : `${retentionDays} days`;
+
+    return (
+      <div className="p-4 rounded-2xl bg-slate-900/50 border border-slate-800">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-xl bg-slate-800 flex-shrink-0">
+              <HardDrive className="h-5 w-5 text-sky-400" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-white flex items-center gap-2">
+                Storage Information
+                {isPermanent ? (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                    💾 Permanent
+                  </span>
+                ) : (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                    ⏳ {retentionText}
+                  </span>
+                )}
+              </p>
+              <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-slate-400">
+                <span>
+                  Total Scans:{" "}
+                  <strong className="text-white">{totalScans}</strong>
+                </span>
+                <span className="text-slate-600">•</span>
+                <span>
+                  Retention:{" "}
+                  <strong className="text-sky-400">{retentionText}</strong>
+                </span>
+                {!isPermanent && expiredScans > 0 && (
+                  <>
+                    <span className="text-slate-600">•</span>
+                    <span className="text-amber-400 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {expiredScans} scan{expiredScans > 1 ? "s" : ""} will be
+                      deleted
+                    </span>
+                  </>
+                )}
+                {!isPermanent && expiredScans === 0 && totalScans > 0 && (
+                  <>
+                    <span className="text-slate-600">•</span>
+                    <span className="text-emerald-400 flex items-center gap-1">
+                      <CheckCircle2 className="h-3 w-3" />
+                      All scans are valid
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {!isPermanent && expiredScans > 0 && (
+              <button
+                onClick={handleManualCleanup}
+                disabled={cleaning}
+                className="px-4 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 text-xs font-semibold transition flex items-center gap-2 whitespace-nowrap disabled:opacity-50"
+              >
+                {cleaning ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}
+                <span>Clean Expired ({expiredScans})</span>
+              </button>
+            )}
+
+            {userRole === "admin" && (
+              <button
+                onClick={handleAdminCleanup}
+                disabled={cleaning}
+                className="px-4 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-semibold transition flex items-center gap-2 whitespace-nowrap disabled:opacity-50"
+              >
+                {cleaning ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Database className="h-3.5 w-3.5" />
+                )}
+                <span>Admin: Clean All</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => setShowStorageInfo(false)}
+              className="p-1.5 rounded-lg text-slate-500 hover:text-slate-300 transition"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* ✅ عداد تنازلي لوقت الحذف التلقائي */}
+        {!isPermanent && expiredScans > 0 && (
+          <div className="mt-3 pt-3 border-t border-slate-800/50">
+            <div className="flex items-center gap-2 text-[10px] text-slate-500">
+              <Timer className="h-3 w-3" />
+              <span>
+                Scans older than{" "}
+                <strong className="text-slate-400">{retentionDays} days</strong>{" "}
+                are automatically deleted at midnight
+              </span>
+              <span className="text-emerald-400 ml-auto flex items-center gap-1">
+                <CheckCircle2 className="h-3 w-3" />
+                Auto-cleanup enabled
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // ============================================================
   // 🖥️ RENDER
   // ============================================================
@@ -1177,6 +1404,9 @@ export default function HistoryPage() {
       className="container mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-10 max-w-7xl space-y-6 sm:space-y-8"
       dir="ltr"
     >
+      {/* ✅ عرض معلومات التخزين */}
+      {renderStorageInfo()}
+
       {/* ✅ تحذير انتهاء الاشتراك */}
       {renderSubscriptionWarning()}
 
@@ -1193,7 +1423,11 @@ export default function HistoryPage() {
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-0.5 sm:mt-1">
             {isLoggedIn
-              ? `Review and manage your security scans (${retentionDays === Infinity ? "Permanent" : `${retentionDays} days`} retention)`
+              ? `Review and manage your security scans (${
+                  retentionDays === Infinity
+                    ? "Permanent"
+                    : `${retentionDays} days`
+                } retention)`
               : "Review and manage all your security scan reports"}
           </p>
         </div>

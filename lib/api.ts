@@ -5,14 +5,16 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
-  withCredentials: true, 
+  withCredentials: true,
   headers: {
     "Content-Type": "application/json",
   },
 });
 
+// ✅ Interceptor للطلب - إضافة Token من الكوكيز
 api.interceptors.request.use(
   (config) => {
+    // ✅ نترك الكوكيز ترسل تلقائياً مع withCredentials: true
     return config;
   },
   (error) => {
@@ -20,32 +22,51 @@ api.interceptors.request.use(
   },
 );
 
+// ✅ Interceptor للاستجابة - التعامل مع 401
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response) {
-      const status = error.response.status;
-      const originalRequest = error.config;
+  async (error) => {
+    const originalRequest = error.config;
 
-      if (originalRequest.url?.includes("/auth/")) {
-        return Promise.reject(error);
-      }
+    // ✅ إذا كان 401 ولم يتم إعادة المحاولة
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
 
-      if (status === 401 || status === 403) {
+      try {
+        console.log("🔄 Attempting to refresh token...");
+
+        // ✅ محاولة تجديد الـ Token
+        const refreshResponse = await api.post(
+          "/auth/refresh",
+          {},
+          { withCredentials: true },
+        );
+
+        if (refreshResponse.data.accessToken) {
+          console.log("✅ Token refreshed successfully");
+          // ✅ إعادة المحاولة مع الـ Token الجديد
+          return api(originalRequest);
+        }
+      } catch (refreshError) {
+        console.log("❌ Token refresh failed, redirecting to login");
+        // ✅ إذا فشل التجديد، إعادة التوجيه إلى تسجيل الدخول
         if (typeof window !== "undefined") {
           document.cookie =
             "access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+          if (!window.location.pathname.includes("/login")) {
+            window.location.href = "/login";
+          }
         }
+        return Promise.reject(refreshError);
+      }
+    }
 
-        if (
-          typeof window !== "undefined" &&
-          !window.location.pathname.includes("/login") &&
-          !window.location.pathname.includes("/register") &&
-          !window.location.pathname.includes("/verify") &&
-          !window.location.pathname.includes("/forgot-password")
-        ) {
-          window.location.href = "/login";
-        }
+    // ✅ التعامل مع الأخطاء الأخرى
+    if (error.response) {
+      const status = error.response.status;
+
+      if (status === 403) {
+        console.log("❌ Forbidden - insufficient permissions");
       }
 
       if (status === 429) {
@@ -64,6 +85,8 @@ api.interceptors.response.use(
     return Promise.reject(error);
   },
 );
+
+// ... باقي الدوال كما هي
 
 // ✅ دالة مساعدة للتحقق من حالة المستخدم
 export const getCurrentUser = async () => {

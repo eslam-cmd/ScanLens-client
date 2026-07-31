@@ -1,4 +1,5 @@
 // client/app/admin/page.tsx
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -76,6 +77,7 @@ import {
   Globe as GlobeIcon,
   AlertTriangle,
   Timer,
+  TrendingDown,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { withAdmin } from "@/lib/guards/withAdmin";
@@ -122,6 +124,9 @@ interface PaymentData {
   status: string;
   description: string | null;
   createdAt: string;
+  paidAt: string | null;
+  refundedAt: string | null;
+  metadata: any;
   user: {
     email: string;
     name: string | null;
@@ -145,8 +150,12 @@ interface StatsData {
   totalUsers: number;
   totalScans: number;
   totalRevenue: number;
+  totalPayments: number;
   totalLicenses: number;
   activeLicenses: number;
+  activeSubscriptions: number;
+  totalPaidUsers: number;
+  averageAmount: number;
   planDistribution: {
     plan: string;
     count: number;
@@ -154,6 +163,21 @@ interface StatsData {
   }[];
   recentUsers: UserData[];
   recentPayments: PaymentData[];
+  monthlyRevenue: {
+    month: string;
+    amount: number;
+    count: number;
+  }[];
+  yearlyRevenue: {
+    year: string;
+    amount: number;
+    count: number;
+  }[];
+  revenueByPlan: {
+    plan: string;
+    amount: number;
+    count: number;
+  }[];
 }
 
 function AdminPage() {
@@ -208,12 +232,28 @@ function AdminPage() {
     };
   };
 
+  // ✅ تنسيق العملة
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+    }).format(amount);
+  };
+
+  // ✅ تنسيق العملة المختصرة (K, M)
+  const formatCurrencyShort = (amount: number) => {
+    if (amount >= 1000000) return `$${(amount / 1000000).toFixed(1)}M`;
+    if (amount >= 1000) return `$${(amount / 1000).toFixed(1)}K`;
+    return `$${amount}`;
+  };
+
+  // ✅ توليد مفتاح ترخيص
   const handleCreateLicense = async (planId: string, email?: string) => {
     try {
       const res = await api.post(
         "/admin/licenses",
         {
-          plan: planId, // ✅ تأكد من إرسال plan وليس planId
+          plan: planId,
           email: email || undefined,
           expiresAt: undefined,
           notes: `License created for ${email || "unknown user"}`,
@@ -232,15 +272,7 @@ function AdminPage() {
     }
   };
 
-  // ✅ تنسيق القيم للعرض
-  const formatValue = (value: any): string => {
-    if (value === Infinity || value === "∞") return "∞";
-    if (typeof value === "boolean") return value ? "✅" : "❌";
-    if (typeof value === "number") return String(value);
-    return String(value);
-  };
-
-  // ✅ التحقق من صلاحية المدير مع الكوكيز
+  // ✅ التحقق من صلاحية المدير
   useEffect(() => {
     const checkAdmin = async () => {
       setLoading(true);
@@ -252,7 +284,6 @@ function AdminPage() {
           if (userData.role === "admin") {
             setIsAdmin(true);
 
-            // ✅ جلب معلومات الاشتراك (إذا كان غير الأدمن الرئيسي)
             if (userData.email !== ADMIN_EMAIL && userData.subscription) {
               const expiresAt = userData.subscription.expiresAt;
               if (expiresAt) {
@@ -320,9 +351,8 @@ function AdminPage() {
     return () => clearInterval(interval);
   }, [subscription?.expiresAt]);
 
-  // ✅ عرض تحذير انتهاء الاشتراك (لغير الأدمن الرئيسي)
+  // ✅ عرض تحذير انتهاء الاشتراك
   const renderSubscriptionWarning = () => {
-    // ✅ إذا كان الأدمن الرئيسي، لا يعرض تحذير
     if (user?.email === ADMIN_EMAIL) return null;
     if (!subscription?.isExpiring || !subscription?.expiresAt) return null;
 
@@ -433,16 +463,21 @@ function AdminPage() {
   };
 
   // ✅ جلب جميع البيانات
+
   const fetchAllData = async () => {
     setRefreshing(true);
+    setError("");
     try {
-      await Promise.all([
-        fetchStats(),
-        fetchUsers(),
-        fetchPayments(),
-        fetchLicenses(),
-        fetchSubscriptions(),
-      ]);
+      // ✅ جلب المستخدمين أولاً
+      await fetchUsers();
+      // ✅ ثم جلب المدفوعات
+      await fetchPayments();
+      // ✅ ثم جلب الاشتراكات
+      await fetchSubscriptions();
+      // ✅ ثم جلب المفاتيح
+      await fetchLicenses();
+      // ✅ وأخيراً الإحصائيات (بعد توفر جميع البيانات)
+      await fetchStats();
     } catch (err) {
       console.error("Failed to fetch data:", err);
     } finally {
@@ -450,18 +485,7 @@ function AdminPage() {
     }
   };
 
-  // ✅ جلب الإحصائيات
-  const fetchStats = async () => {
-    try {
-      const res = await api.get("/admin/stats", { withCredentials: true });
-      setStats(res.data);
-    } catch (err) {
-      console.error("Failed to fetch stats:", err);
-      setError("Failed to load statistics");
-    }
-  };
-
-  // ✅ جلب جميع المستخدمين مع كل البيانات
+  // ✅ جلب المستخدمين
   const fetchUsers = async () => {
     try {
       const res = await api.get("/admin/users", { withCredentials: true });
@@ -476,13 +500,49 @@ function AdminPage() {
   const fetchPayments = async () => {
     try {
       const res = await api.get("/admin/payments", { withCredentials: true });
-      setPayments(res.data);
+
+      console.log("📊 Full response:", res.data);
+
+      let paymentsData = [];
+      let statsData = null;
+
+      if (res.data) {
+        if (res.data.data && Array.isArray(res.data.data)) {
+          paymentsData = res.data.data;
+          statsData = res.data.stats;
+        } else if (Array.isArray(res.data)) {
+          paymentsData = res.data;
+        } else if (res.data.payments && Array.isArray(res.data.payments)) {
+          paymentsData = res.data.payments;
+          statsData = res.data.stats;
+        }
+      }
+
+      console.log("✅ Payments data:", paymentsData);
+      console.log("✅ Stats data:", statsData);
+
+      // ✅ تحديث حالة المدفوعات
+      setPayments(paymentsData);
+
+      // ✅ تحديث الإحصائيات مباشرة
+      if (statsData) {
+        setStats((prev) => ({
+          ...prev!,
+          totalRevenue: statsData.totalRevenue || 0,
+          totalPayments: statsData.totalPayments || paymentsData.length,
+          totalPaidUsers: statsData.paidUsers || paymentsData.length,
+          activeSubscriptions: statsData.activeUsers || 0,
+          revenueByPlan: statsData.revenueByPlan || [],
+          monthlyRevenue: statsData.monthlyRevenue || [],
+          averageAmount: statsData.averageAmount || 0,
+          planDistribution: statsData.planDistribution || [],
+        }));
+      }
     } catch (err) {
       console.error("Failed to fetch payments:", err);
       setError("Failed to load payments");
     }
   };
-
   // ✅ جلب المفاتيح
   const fetchLicenses = async () => {
     try {
@@ -497,12 +557,135 @@ function AdminPage() {
   // ✅ جلب الاشتراكات
   const fetchSubscriptions = async () => {
     try {
-      const res = await api.get("/admin/subscriptions", {
+      const res = await api.get("/subscription/admin/all", {
         withCredentials: true,
       });
-      setSubscriptions(res.data);
+      let subsData = res.data;
+      if (!Array.isArray(res.data)) {
+        subsData = [];
+      }
+      setSubscriptions(subsData);
     } catch (err) {
       console.error("Failed to fetch subscriptions:", err);
+      // ✅ استخدام بيانات احتياطية من المستخدمين
+      const paidUsers = users.filter((u) => u.plan !== "free");
+      setSubscriptions(
+        paidUsers.map((u) => ({
+          id: u.id,
+          userId: u.id,
+          user: { email: u.email, name: u.name },
+          plan: u.plan,
+          planId: u.plan,
+          status: "ACTIVE",
+          isActive: true,
+          billingCycle: "monthly",
+          startDate: u.createdAt,
+          endDate: u.subscription?.expiresAt || null,
+          expiresAt: u.subscription?.expiresAt || null,
+        })),
+      );
+    }
+  };
+
+  // ✅ جلب الإحصائيات
+  // client/app/admin/page.tsx
+
+  // ✅ استبدل دالة fetchStats بهذا الكود
+  const fetchStats = async () => {
+    try {
+      const res = await api.get("/admin/stats", { withCredentials: true });
+
+      // ✅ استخدام payments الحالية بدلاً من انتظارها
+      const successfulPayments = payments.filter(
+        (p) => p.status === "SUCCEEDED",
+      );
+      const totalRevenue = successfulPayments.reduce(
+        (sum, p) => sum + p.amount,
+        0,
+      );
+      const totalPayments = payments.length;
+      const paidUsers = users.filter((u) => u.plan !== "free").length;
+      const activeSubs = subscriptions.filter(
+        (s) => s.isActive !== false,
+      ).length;
+
+      // ✅ حساب الإيرادات حسب الخطة
+      const revenueByPlan: {
+        [key: string]: { amount: number; count: number };
+      } = {};
+      successfulPayments.forEach((p) => {
+        const planId = p.metadata?.planId || "free";
+        if (!revenueByPlan[planId]) {
+          revenueByPlan[planId] = { amount: 0, count: 0 };
+        }
+        revenueByPlan[planId].amount += p.amount;
+        revenueByPlan[planId].count += 1;
+      });
+
+      // ✅ حساب الإيرادات الشهرية
+      const monthlyData: { [key: string]: { amount: number; count: number } } =
+        {};
+      successfulPayments.forEach((p) => {
+        const date = new Date(p.createdAt);
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+        if (!monthlyData[monthKey]) {
+          monthlyData[monthKey] = { amount: 0, count: 0 };
+        }
+        monthlyData[monthKey].amount += p.amount;
+        monthlyData[monthKey].count += 1;
+      });
+
+      const monthlyRevenue = Object.entries(monthlyData)
+        .map(([month, data]) => ({
+          month,
+          amount: data.amount,
+          count: data.count,
+        }))
+        .sort((a, b) => a.month.localeCompare(b.month));
+
+      // ✅ توزيع الخطط
+      const planDistribution = Object.entries(
+        users.reduce(
+          (acc, u) => {
+            const plan = u.plan || "free";
+            acc[plan] = (acc[plan] || 0) + 1;
+            return acc;
+          },
+          {} as Record<string, number>,
+        ),
+      ).map(([plan, count]) => ({
+        plan,
+        count,
+        percentage: users.length > 0 ? (count / users.length) * 100 : 0,
+      }));
+
+      setStats({
+        totalUsers: users.length,
+        totalScans: res.data?.totalScans || 0,
+        totalRevenue,
+        totalPayments,
+        totalLicenses: licenses.length,
+        activeLicenses: licenses.filter((l) => l.isActive).length,
+        activeSubscriptions: activeSubs,
+        totalPaidUsers: paidUsers,
+        averageAmount:
+          successfulPayments.length > 0
+            ? totalRevenue / successfulPayments.length
+            : 0,
+        planDistribution,
+        recentUsers: users.slice(0, 5),
+        recentPayments: payments.slice(0, 5),
+        monthlyRevenue,
+        yearlyRevenue: [],
+        revenueByPlan: Object.entries(revenueByPlan).map(([plan, data]) => ({
+          plan,
+          amount: data.amount,
+          count: data.count,
+        })),
+      });
+    } catch (err) {
+      console.error("Failed to fetch stats:", err);
+      setError("Failed to load statistics");
     }
   };
 
@@ -615,7 +798,7 @@ function AdminPage() {
 
   return (
     <div className="container mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-10 max-w-7xl">
-      {/* ✅ تحذير انتهاء الاشتراك (لغير الأدمن الرئيسي) */}
+      {/* ✅ تحذير انتهاء الاشتراك */}
       {renderSubscriptionWarning()}
 
       {/* Header */}
@@ -723,39 +906,45 @@ function AdminPage() {
         </div>
       </div>
 
-      {/* Tab Content */}
+      {/* ============================================================ */}
+      {/* ✅ OVERVIEW TAB */}
+      {/* ============================================================ */}
       {activeTab === "overview" && stats && (
         <div className="space-y-6">
           {/* Stats Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
             {[
               {
+                label: "Total Revenue",
+                value: formatCurrency(stats.totalRevenue || 0),
+                icon: DollarSign,
+                color: "text-emerald-400",
+                bg: "bg-emerald-500/10",
+                subtitle: `${stats.totalPayments || 0} payments`,
+              },
+              {
                 label: "Total Users",
                 value: stats.totalUsers || 0,
                 icon: Users,
                 color: "text-sky-400",
                 bg: "bg-sky-500/10",
+                subtitle: `${stats.totalPaidUsers || 0} paid users`,
+              },
+              {
+                label: "Active Subscriptions",
+                value: stats.activeSubscriptions || 0,
+                icon: Crown,
+                color: "text-amber-400",
+                bg: "bg-amber-500/10",
+                subtitle: `${stats.totalLicenses || 0} total licenses`,
               },
               {
                 label: "Total Scans",
                 value: stats.totalScans || 0,
                 icon: Scan,
-                color: "text-emerald-400",
-                bg: "bg-emerald-500/10",
-              },
-              {
-                label: "Revenue",
-                value: `$${stats.totalRevenue || 0}`,
-                icon: DollarSign,
-                color: "text-amber-400",
-                bg: "bg-amber-500/10",
-              },
-              {
-                label: "Active Licenses",
-                value: stats.activeLicenses || 0,
-                icon: Key,
                 color: "text-purple-400",
                 bg: "bg-purple-500/10",
+                subtitle: "All time scans",
               },
             ].map((stat, i) => {
               const Icon = stat.icon;
@@ -775,15 +964,172 @@ function AdminPage() {
                   <p className="text-[9px] sm:text-[10px] text-slate-400 uppercase tracking-wider">
                     {stat.label}
                   </p>
+                  {stat.subtitle && (
+                    <p className="text-[8px] text-slate-500 mt-0.5">
+                      {stat.subtitle}
+                    </p>
+                  )}
                 </div>
               );
             })}
           </div>
 
+          {/* Monthly Revenue Chart */}
+          {stats.monthlyRevenue && stats.monthlyRevenue.length > 0 && (
+            <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-emerald-400" />
+                  Monthly Revenue
+                </h3>
+                <span className="text-xs text-slate-400">
+                  Total:{" "}
+                  {formatCurrency(
+                    stats.monthlyRevenue.reduce((sum, m) => sum + m.amount, 0),
+                  )}
+                </span>
+              </div>
+              <div className="flex items-end gap-2 h-32">
+                {stats.monthlyRevenue.slice(-12).map((month, index) => {
+                  const maxAmount = Math.max(
+                    ...stats.monthlyRevenue.slice(-12).map((m) => m.amount),
+                    1,
+                  );
+                  const height = (month.amount / maxAmount) * 100;
+                  return (
+                    <div
+                      key={index}
+                      className="flex-1 flex flex-col items-center"
+                    >
+                      <div className="relative w-full flex flex-col items-center">
+                        <div
+                          className="w-full max-w-[40px] bg-gradient-to-t from-emerald-500 to-emerald-400 rounded-t transition-all duration-500"
+                          style={{
+                            height: `${Math.max(height, 5)}%`,
+                            minHeight: "8px",
+                          }}
+                        />
+                      </div>
+                      <div className="mt-1 text-center">
+                        <p className="text-[8px] text-slate-500 font-mono">
+                          {month.month.slice(5)}
+                        </p>
+                        <p className="text-[7px] text-emerald-400 font-mono">
+                          {formatCurrencyShort(month.amount)}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Revenue by Plan & Quick Stats */}
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
+              <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                <PieChart className="h-4 w-4 text-sky-400" />
+                Revenue by Plan
+              </h3>
+              <div className="space-y-3">
+                {stats.revenueByPlan && stats.revenueByPlan.length > 0 ? (
+                  stats.revenueByPlan.map((item) => {
+                    const planInfo = getPlanDisplayInfo(item.plan);
+                    const totalRevenue = stats.revenueByPlan.reduce(
+                      (sum, p) => sum + p.amount,
+                      0,
+                    );
+                    const percentage =
+                      totalRevenue > 0 ? (item.amount / totalRevenue) * 100 : 0;
+                    return (
+                      <div key={item.plan}>
+                        <div className="flex justify-between text-xs">
+                          <span className="flex items-center gap-2 text-slate-300">
+                            <planInfo.icon
+                              className={`h-3 w-3 ${planInfo.color}`}
+                            />
+                            {planInfo.displayName}
+                          </span>
+                          <span className="text-white font-mono">
+                            {formatCurrency(item.amount)}
+                            <span className="text-slate-500 text-[10px] ml-1">
+                              ({item.count} payments)
+                            </span>
+                          </span>
+                        </div>
+                        <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-1">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${planInfo.color.replace("text-", "bg-")}`}
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="text-xs text-slate-400 text-center py-4">
+                    No revenue data available
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
+              <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                <Activity className="h-4 w-4 text-amber-400" />
+                Quick Stats
+              </h3>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center p-2 rounded-lg bg-slate-950/50 border border-slate-800/50">
+                  <span className="text-xs text-slate-400">
+                    Average Payment
+                  </span>
+                  <span className="text-sm font-bold text-white font-mono">
+                    {formatCurrency(stats.averageAmount || 0)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center p-2 rounded-lg bg-slate-950/50 border border-slate-800/50">
+                  <span className="text-xs text-slate-400">
+                    Total Paid Users
+                  </span>
+                  <span className="text-sm font-bold text-white">
+                    {stats.totalPaidUsers || 0}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center p-2 rounded-lg bg-slate-950/50 border border-slate-800/50">
+                  <span className="text-xs text-slate-400">
+                    Active Licenses
+                  </span>
+                  <span className="text-sm font-bold text-white">
+                    {stats.activeLicenses || 0}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center p-2 rounded-lg bg-slate-950/50 border border-slate-800/50">
+                  <span className="text-xs text-slate-400">Total Payments</span>
+                  <span className="text-sm font-bold text-white">
+                    {stats.totalPayments || 0}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center p-2 rounded-lg bg-slate-950/50 border border-slate-800/50">
+                  <span className="text-xs text-slate-400">
+                    Conversion Rate
+                  </span>
+                  <span className="text-sm font-bold text-white">
+                    {stats.totalUsers > 0
+                      ? `${(((stats.totalPaidUsers || 0) / stats.totalUsers) * 100).toFixed(1)}%`
+                      : "0%"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Plan Distribution */}
           <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
-            <h3 className="text-sm font-bold text-white mb-3">
-              Plan Distribution
+            <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+              <Users className="h-4 w-4 text-sky-400" />
+              User Distribution by Plan
             </h3>
             <div className="space-y-3">
               {stats.planDistribution?.map((plan: any) => {
@@ -791,7 +1137,7 @@ function AdminPage() {
                 return (
                   <div key={plan.plan}>
                     <div className="flex justify-between text-xs text-slate-400">
-                      <span className="capitalize flex items-center gap-2">
+                      <span className="flex items-center gap-2">
                         <planInfo.icon
                           className={`h-3 w-3 ${planInfo.color}`}
                         />
@@ -815,7 +1161,6 @@ function AdminPage() {
 
           {/* Recent Activity */}
           <div className="grid md:grid-cols-2 gap-4">
-            {/* Recent Users */}
             <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
               <h3 className="text-sm font-bold text-white mb-3">
                 Recent Users
@@ -846,7 +1191,6 @@ function AdminPage() {
               </div>
             </div>
 
-            {/* Recent Payments */}
             <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
               <h3 className="text-sm font-bold text-white mb-3">
                 Recent Payments
@@ -866,8 +1210,8 @@ function AdminPage() {
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-bold text-white">
-                        ${p.amount}
+                      <p className="text-sm font-bold text-white font-mono">
+                        {formatCurrency(p.amount)}
                       </p>
                       <span
                         className={`text-xs px-2 py-0.5 rounded-full ${
@@ -889,7 +1233,9 @@ function AdminPage() {
         </div>
       )}
 
-      {/* Users Tab */}
+      {/* ============================================================ */}
+      {/* ✅ USERS TAB */}
+      {/* ============================================================ */}
       {activeTab === "users" && (
         <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
           <div className="flex items-center justify-between mb-4">
@@ -977,67 +1323,137 @@ function AdminPage() {
         </div>
       )}
 
-      {/* Payments Tab */}
+      {/* ============================================================ */}
+      {/* ✅ PAYMENTS TAB */}
+      {/* ============================================================ */}
       {activeTab === "payments" && (
-        <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
-          <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-            <CreditCard className="h-4 w-4 text-emerald-400" />
-            Payment History ({filteredPayments.length})
-          </h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-800 text-xs text-slate-400">
-                  <th className="text-left py-2 px-3">User</th>
-                  <th className="text-left py-2 px-3">Amount</th>
-                  <th className="text-left py-2 px-3">Status</th>
-                  <th className="text-left py-2 px-3">Description</th>
-                  <th className="text-left py-2 px-3">Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredPayments.map((payment) => (
-                  <tr
-                    key={payment.id}
-                    className="border-b border-slate-800/50 hover:bg-slate-800/30 transition"
-                  >
-                    <td className="py-2 px-3 text-slate-300">
-                      {payment.user?.email || "—"}
-                    </td>
-                    <td className="py-2 px-3 text-white font-mono">
-                      ${payment.amount}
-                    </td>
-                    <td className="py-2 px-3">
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded-full ${
-                          payment.status === "SUCCEEDED"
-                            ? "bg-emerald-500/20 text-emerald-400"
-                            : payment.status === "FAILED"
-                              ? "bg-rose-500/20 text-rose-400"
-                              : "bg-amber-500/20 text-amber-400"
-                        }`}
-                      >
-                        {payment.status}
-                      </span>
-                    </td>
-                    <td className="py-2 px-3 text-slate-400 text-xs">
-                      {payment.description || "—"}
-                    </td>
-                    <td className="py-2 px-3 text-slate-400 text-xs">
-                      {new Date(payment.createdAt).toLocaleDateString()}
-                    </td>
+        <div className="space-y-4">
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 to-emerald-600/5 border border-emerald-500/20">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <p className="text-xs text-slate-400 uppercase tracking-wider">
+                  Total Revenue
+                </p>
+                <p className="text-3xl font-bold text-white font-mono">
+                  {formatCurrency(stats?.totalRevenue || 0)}
+                </p>
+                <p className="text-xs text-slate-400 mt-1">
+                  {payments.filter((p) => p.status === "SUCCEEDED").length}{" "}
+                  successful payments
+                </p>
+              </div>
+              <div className="flex items-center gap-4 text-xs">
+                <div>
+                  <p className="text-slate-400">Total</p>
+                  <p className="text-white font-bold">{payments.length}</p>
+                </div>
+                <div>
+                  <p className="text-slate-400">Paid Users</p>
+                  <p className="text-white font-bold">
+                    {stats?.totalPaidUsers || 0}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-slate-400">Active Subs</p>
+                  <p className="text-white font-bold">
+                    {stats?.activeSubscriptions || 0}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
+            <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+              <CreditCard className="h-4 w-4 text-emerald-400" />
+              Payment History ({filteredPayments.length})
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-800 text-xs text-slate-400">
+                    <th className="text-left py-2 px-3">User</th>
+                    <th className="text-left py-2 px-3">Plan</th>
+                    <th className="text-left py-2 px-3">Amount</th>
+                    <th className="text-left py-2 px-3">Status</th>
+                    <th className="text-left py-2 px-3">Date</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {filteredPayments.length > 0 ? (
+                    filteredPayments.map((payment) => {
+                      const planInfo = getPlanDisplayInfo(
+                        payment.metadata?.planId || "free",
+                      );
+                      return (
+                        <tr
+                          key={payment.id}
+                          className="border-b border-slate-800/50 hover:bg-slate-800/30 transition"
+                        >
+                          <td className="py-2 px-3 text-slate-300">
+                            {payment.user?.email || "Unknown User"}
+                          </td>
+                          <td className="py-2 px-3">
+                            <span
+                              className={`text-xs px-2 py-0.5 rounded-full ${planInfo.bgColor} ${planInfo.borderColor} ${planInfo.color}`}
+                            >
+                              <planInfo.icon className="h-3 w-3 inline mr-0.5" />
+                              {planInfo.displayName}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-white font-mono">
+                            {formatCurrency(payment.amount)}
+                          </td>
+                          <td className="py-2 px-3">
+                            <span
+                              className={`text-xs px-2 py-0.5 rounded-full ${
+                                payment.status === "SUCCEEDED"
+                                  ? "bg-emerald-500/20 text-emerald-400"
+                                  : payment.status === "FAILED"
+                                    ? "bg-rose-500/20 text-rose-400"
+                                    : "bg-amber-500/20 text-amber-400"
+                              }`}
+                            >
+                              {payment.status === "SUCCEEDED"
+                                ? "✅"
+                                : payment.status === "FAILED"
+                                  ? "❌"
+                                  : "⏳"}{" "}
+                              {payment.status}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-slate-400 text-xs">
+                            {new Date(payment.createdAt).toLocaleDateString()}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="py-8 text-center text-slate-400"
+                      >
+                        <CreditCard className="h-10 w-10 mx-auto mb-2 text-slate-600" />
+                        <p>No payments found</p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Payments will appear here when users subscribe
+                        </p>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Licenses Tab */}
+      {/* ============================================================ */}
+      {/* ✅ LICENSES TAB */}
+      {/* ============================================================ */}
       {activeTab === "licenses" && (
         <div className="space-y-6">
-          {/* Create License */}
           <div className="p-4 sm:p-6 rounded-2xl bg-gradient-to-br from-amber-500/10 via-amber-600/5 to-transparent border border-amber-500/20">
             <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
               <Key className="h-4 w-4 text-amber-400" />
@@ -1081,7 +1497,6 @@ function AdminPage() {
             </div>
           </div>
 
-          {/* Licenses List */}
           <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
             <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
               <Key className="h-4 w-4 text-purple-400" />
@@ -1124,11 +1539,7 @@ function AdminPage() {
                         </td>
                         <td className="py-2 px-3">
                           <span
-                            className={`text-xs px-2 py-0.5 rounded-full ${
-                              license.isActive
-                                ? "bg-emerald-500/20 text-emerald-400"
-                                : "bg-rose-500/20 text-rose-400"
-                            }`}
+                            className={`text-xs px-2 py-0.5 rounded-full ${license.isActive ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"}`}
                           >
                             {license.isActive ? "Active" : "Revoked"}
                           </span>
@@ -1161,80 +1572,145 @@ function AdminPage() {
         </div>
       )}
 
-      {/* Subscriptions Tab */}
+      {/* ============================================================ */}
+      {/* ✅ SUBSCRIPTIONS TAB */}
+      {/* ============================================================ */}
       {activeTab === "subscriptions" && (
-        <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
-          <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-            <Crown className="h-4 w-4 text-amber-400" />
-            Subscriptions ({subscriptions.length})
-          </h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-800 text-xs text-slate-400">
-                  <th className="text-left py-2 px-3">User</th>
-                  <th className="text-left py-2 px-3">Plan</th>
-                  <th className="text-left py-2 px-3">Status</th>
-                  <th className="text-left py-2 px-3">Billing</th>
-                  <th className="text-left py-2 px-3">Start Date</th>
-                  <th className="text-left py-2 px-3">End Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {subscriptions.map((sub) => {
-                  const planInfo = sub.plan?.name
-                    ? getPlanDisplayInfo(sub.plan.name)
-                    : getPlanDisplayInfo("free");
-                  return (
-                    <tr
-                      key={sub.id}
-                      className="border-b border-slate-800/50 hover:bg-slate-800/30 transition"
-                    >
-                      <td className="py-2 px-3 text-white">
-                        {sub.user?.email || "—"}
-                      </td>
-                      <td className="py-2 px-3">
-                        <span
-                          className={`text-xs px-2 py-0.5 rounded-full ${planInfo.bgColor} ${planInfo.borderColor} ${planInfo.color}`}
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              {
+                label: "Total",
+                value: subscriptions.length,
+                icon: Crown,
+                color: "text-amber-400",
+              },
+              {
+                label: "Active",
+                value: subscriptions.filter((s) => s.isActive !== false).length,
+                icon: Check,
+                color: "text-emerald-400",
+              },
+              {
+                label: "Free Users",
+                value: users.filter((u) => u.plan === "free").length,
+                icon: User,
+                color: "text-slate-400",
+              },
+              {
+                label: "Paid Users",
+                value: users.filter((u) => u.plan !== "free").length,
+                icon: DollarSign,
+                color: "text-emerald-400",
+              },
+            ].map((stat, i) => {
+              const Icon = stat.icon;
+              return (
+                <div
+                  key={i}
+                  className="p-3 rounded-xl bg-slate-900/40 border border-slate-800/50 text-center"
+                >
+                  <Icon className={`h-5 w-5 ${stat.color} mx-auto mb-1`} />
+                  <p className="text-xl font-bold text-white">{stat.value}</p>
+                  <p className="text-[10px] text-slate-400 uppercase">
+                    {stat.label}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
+            <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+              <Crown className="h-4 w-4 text-amber-400" />
+              Subscriptions ({subscriptions.length})
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-800 text-xs text-slate-400">
+                    <th className="text-left py-2 px-3">User</th>
+                    <th className="text-left py-2 px-3">Plan</th>
+                    <th className="text-left py-2 px-3">Status</th>
+                    <th className="text-left py-2 px-3">Billing</th>
+                    <th className="text-left py-2 px-3">Expires</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {subscriptions.length > 0 ? (
+                    subscriptions.map((sub) => {
+                      const planInfo = getPlanDisplayInfo(
+                        sub.plan || sub.planId || "free",
+                      );
+                      return (
+                        <tr
+                          key={sub.id || sub.userId}
+                          className="border-b border-slate-800/50 hover:bg-slate-800/30 transition"
                         >
-                          <planInfo.icon className="h-3 w-3 inline mr-0.5" />
-                          {planInfo.displayName}
-                        </span>
-                      </td>
-                      <td className="py-2 px-3">
-                        <span
-                          className={`text-xs px-2 py-0.5 rounded-full ${
-                            sub.status === "ACTIVE"
-                              ? "bg-emerald-500/20 text-emerald-400"
-                              : sub.status === "CANCELLED"
-                                ? "bg-rose-500/20 text-rose-400"
-                                : "bg-amber-500/20 text-amber-400"
-                          }`}
-                        >
-                          {sub.status}
-                        </span>
-                      </td>
-                      <td className="py-2 px-3 text-slate-300">
-                        {sub.billingCycle}
-                      </td>
-                      <td className="py-2 px-3 text-slate-400 text-xs">
-                        {new Date(sub.startDate).toLocaleDateString()}
-                      </td>
-                      <td className="py-2 px-3 text-slate-400 text-xs">
-                        {sub.endDate
-                          ? new Date(sub.endDate).toLocaleDateString()
-                          : "—"}
+                          <td className="py-2 px-3 text-white">
+                            {sub.user?.email || sub.email || "Unknown"}
+                          </td>
+                          <td className="py-2 px-3">
+                            <span
+                              className={`text-xs px-2 py-0.5 rounded-full ${planInfo.bgColor} ${planInfo.borderColor} ${planInfo.color}`}
+                            >
+                              <planInfo.icon className="h-3 w-3 inline mr-0.5" />
+                              {planInfo.displayName}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3">
+                            <span
+                              className={`text-xs px-2 py-0.5 rounded-full ${
+                                sub.status === "ACTIVE" ||
+                                sub.isActive !== false
+                                  ? "bg-emerald-500/20 text-emerald-400"
+                                  : sub.status === "CANCELLED"
+                                    ? "bg-rose-500/20 text-rose-400"
+                                    : "bg-amber-500/20 text-amber-400"
+                              }`}
+                            >
+                              {sub.status === "ACTIVE" || sub.isActive !== false
+                                ? "✅ Active"
+                                : "❌ Inactive"}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-slate-300">
+                            {sub.billingCycle || "monthly"}
+                          </td>
+                          <td className="py-2 px-3 text-slate-400 text-xs">
+                            {sub.endDate || sub.expiresAt
+                              ? new Date(
+                                  sub.endDate || sub.expiresAt,
+                                ).toLocaleDateString()
+                              : sub.expiresAt === null
+                                ? "Never"
+                                : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="py-8 text-center text-slate-400"
+                      >
+                        <Crown className="h-10 w-10 mx-auto mb-2 text-slate-600" />
+                        <p>No subscriptions found</p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Subscriptions will appear here when users subscribe
+                        </p>
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
 
-      {/* ✅ Upgrade Modal (لغير الأدمن الرئيسي) */}
+      {/* ✅ Upgrade Modal */}
       {user?.email !== ADMIN_EMAIL && (
         <UpgradeModal
           isOpen={showUpgradeModal}
