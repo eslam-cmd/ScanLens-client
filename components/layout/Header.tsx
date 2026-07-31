@@ -176,9 +176,7 @@ export default function Header() {
       label: "Admin Dashboard",
       icon: LayoutDashboard,
       highlight: true,
-    },
-    { href: "/admin/licenses", label: "Licenses", icon: Key },
-    { href: "/admin/payments", label: "Payments", icon: BarChart3 },
+    }
   ];
 
   const getInitials = (name: string) => {

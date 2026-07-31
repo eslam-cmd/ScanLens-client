@@ -58,8 +58,8 @@ export interface PlanFeatures {
   teamMembers: number;
   apiAccess: boolean;
   customRules: boolean;
-  auditLogs: boolean; // ✅ إضافة هذه الخاصية
-  whiteLabel: boolean; // ✅ إضافة هذه الخاصية
+  auditLogs: boolean;
+  whiteLabel: boolean;
 }
 
 export interface PlanLimits {
@@ -113,10 +113,10 @@ export const PLAN_FEATURES: Record<PlanType, PlanFeatures> = {
     badge: "Starter",
     badgeColor: "text-slate-400 bg-slate-800/50",
     historyRetention: 7,
-    maxScans: 5, 
+    maxScans: 5,
     exportReports: true,
-    aiFixes: false, 
-    deepScan: true, 
+    aiFixes: false,
+    deepScan: true,
     prioritySupport: false,
     maxWebsites: 1,
     teamMembers: 1,
@@ -170,7 +170,7 @@ export const PLAN_FEATURES: Record<PlanType, PlanFeatures> = {
 };
 
 // ============================================================
-// ✅ الخطط الكاملة
+// ✅ الخطط الكاملة (مع الأسعار الصحيحة)
 // ============================================================
 
 export const PLANS: Record<PlanType, Plan> = {
@@ -217,8 +217,8 @@ export const PLANS: Record<PlanType, Plan> = {
     id: "pro",
     name: "Pro",
     icon: Crown,
-    price: 29,
-    priceYearly: 290,
+    price: 29.99, // ✅ السعر الصحيح
+    priceYearly: 299.99, // ✅ السعر الصحيح
     description: "Ideal for professional developers and small teams",
     color: "from-sky-500 to-indigo-500",
     bgColor: "bg-sky-950/30",
@@ -261,8 +261,8 @@ export const PLANS: Record<PlanType, Plan> = {
     id: "extra",
     name: "Extra",
     icon: Gem,
-    price: 79,
-    priceYearly: 790,
+    price: 49.99, // ✅ السعر الصحيح
+    priceYearly: 499.99, // ✅ السعر الصحيح
     description: "For enterprises and power users needing maximum capabilities",
     color: "from-purple-500 to-pink-500",
     bgColor: "bg-purple-950/30",
@@ -395,9 +395,9 @@ export const checkUserCapability = (
   }
 };
 
-// ✅ 1. getPlanPrice - مُصححة
+// ✅ 1. getPlanPrice
 export const getPlanPrice = (
-  planId: PlanType, // ✅ اسم مختلف
+  planId: PlanType,
   cycle: BillingCycle = "monthly",
 ): string => {
   const plan = PLANS[planId];
@@ -417,13 +417,13 @@ export const isPaidPlan = (plan: PlanType): boolean => {
   return plan !== "free";
 };
 
-// ✅ 4. getPlanDisplayName - مُصححة
+// ✅ 4. getPlanDisplayName
 export const getPlanDisplayName = (planId: PlanType): string => {
   const features = getPlanFeatures(planId);
   return features.name;
 };
 
-// ✅ 5. getPlanIcon - مُصححة
+// ✅ 5. getPlanIcon
 export const getPlanIcon = (planId: PlanType): any => {
   const features = getPlanFeatures(planId);
   return features.icon;

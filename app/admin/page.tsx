@@ -214,6 +214,14 @@ function AdminPage() {
     seconds: number;
   } | null>(null);
 
+  // ✅ State لتفعيل الاشتراك
+  const [selectedUserId, setSelectedUserId] = useState<string>("");
+  const [selectedPlanForUser, setSelectedPlanForUser] = useState<string>("pro");
+  const [selectedBillingCycle, setSelectedBillingCycle] = useState<
+    "monthly" | "yearly"
+  >("monthly");
+  const [activatingSubscription, setActivatingSubscription] = useState(false);
+
   // ✅ الحصول على جميع الخطط للمقارنة
   const allPlans = useMemo(() => Object.values(PLANS), []);
 
@@ -269,6 +277,60 @@ function AdminPage() {
     } catch (err: any) {
       setError(err.response?.data?.message || "Failed to create license");
       setTimeout(() => setError(""), 3000);
+    }
+  };
+
+  // ✅ دالة تفعيل الاشتراك
+  const handleActivateSubscription = async () => {
+    if (!selectedUserId) {
+      setError("Please select a user");
+      return;
+    }
+
+    if (!selectedPlanForUser) {
+      setError("Please select a plan");
+      return;
+    }
+
+    if (
+      !confirm(
+        `Are you sure you want to activate ${selectedPlanForUser} plan for this user with ${selectedBillingCycle} billing?`,
+      )
+    )
+      return;
+
+    setActivatingSubscription(true);
+    setError("");
+
+    try {
+      const res = await api.post(
+        "/subscription/activate",
+        {
+          userId: selectedUserId,
+          planId: selectedPlanForUser,
+          billingCycle: selectedBillingCycle,
+        },
+        { withCredentials: true },
+      );
+
+      if (res.data.success) {
+        setSuccess(
+          `✅ Subscription activated successfully! ${res.data.plan} plan (${selectedBillingCycle}) for user`,
+        );
+        // ✅ تحديث البيانات
+        await fetchAllData();
+
+        // ✅ إعادة تعيين الحقول
+        setSelectedUserId("");
+        setSelectedPlanForUser("pro");
+        setSelectedBillingCycle("monthly");
+      }
+    } catch (err: any) {
+      setError(
+        err.response?.data?.message || "Failed to activate subscription",
+      );
+    } finally {
+      setActivatingSubscription(false);
     }
   };
 
@@ -463,7 +525,6 @@ function AdminPage() {
   };
 
   // ✅ جلب جميع البيانات
-
   const fetchAllData = async () => {
     setRefreshing(true);
     setError("");
@@ -543,6 +604,7 @@ function AdminPage() {
       setError("Failed to load payments");
     }
   };
+
   // ✅ جلب المفاتيح
   const fetchLicenses = async () => {
     try {
@@ -588,9 +650,6 @@ function AdminPage() {
   };
 
   // ✅ جلب الإحصائيات
-  // client/app/admin/page.tsx
-
-  // ✅ استبدل دالة fetchStats بهذا الكود
   const fetchStats = async () => {
     try {
       const res = await api.get("/admin/stats", { withCredentials: true });
@@ -627,7 +686,9 @@ function AdminPage() {
         {};
       successfulPayments.forEach((p) => {
         const date = new Date(p.createdAt);
-        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+        const monthKey = `${date.getFullYear()}-${String(
+          date.getMonth() + 1,
+        ).padStart(2, "0")}`;
         if (!monthlyData[monthKey]) {
           monthlyData[monthKey] = { amount: 0, count: 0 };
         }
@@ -864,6 +925,133 @@ function AdminPage() {
           </button>
         </div>
       )}
+
+      {/* ✅ Activate Subscription Section */}
+      <div className="p-4 sm:p-6 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-emerald-600/5 to-transparent border border-emerald-500/20 mb-6">
+        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+          <Crown className="h-4 w-4 text-emerald-400" />
+          Activate Subscription for User
+        </h3>
+        <div className="flex flex-col sm:flex-row gap-3">
+          {/* ✅ اختيار المستخدم */}
+          {/* ✅ اختيار المستخدم - عرض جميع المستخدمين */}
+          <select
+            value={selectedUserId}
+            onChange={(e) => setSelectedUserId(e.target.value)}
+            className="px-4 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-sm focus:outline-none focus:border-sky-500 transition flex-1"
+          >
+            <option value="">Select User</option>
+            {users.map((u) => {
+              const planInfo = getPlanDisplayInfo(u.plan);
+              return (
+                <option key={u.id} value={u.id} className="bg-slate-900">
+                  {u.email} ({u.name || "No name"}) -
+                  <span className={planInfo.color}>{planInfo.displayName}</span>
+                </option>
+              );
+            })}
+          </select>
+
+          {/* ✅ اختيار الخطة */}
+          <select
+            value={selectedPlanForUser}
+            onChange={(e) => setSelectedPlanForUser(e.target.value)}
+            className="px-4 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-sm focus:outline-none focus:border-sky-500 transition"
+          >
+            {allPlans
+              .filter((plan) => plan.id !== "free")
+              .map((plan) => {
+                const features = getPlanFeatures(plan.id);
+                return (
+                  <option
+                    key={plan.id}
+                    value={plan.id}
+                    className="bg-slate-900"
+                  >
+                    {features.name} - ${plan.price}/month
+                  </option>
+                );
+              })}
+          </select>
+
+          {/* ✅ اختيار الفوترة (شهري/سنوي) */}
+          <div className="flex items-center gap-1 bg-slate-950 border border-slate-800 rounded-xl p-1">
+            <button
+              onClick={() => setSelectedBillingCycle("monthly")}
+              className={`px-4 py-2 rounded-lg text-xs font-semibold transition ${
+                selectedBillingCycle === "monthly"
+                  ? "bg-sky-600 text-white"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              Monthly
+            </button>
+            <button
+              onClick={() => setSelectedBillingCycle("yearly")}
+              className={`px-4 py-2 rounded-lg text-xs font-semibold transition ${
+                selectedBillingCycle === "yearly"
+                  ? "bg-sky-600 text-white"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              Yearly
+              <span className="text-[8px] text-emerald-400 ml-1">Save 20%</span>
+            </button>
+          </div>
+
+          {/* ✅ زر التفعيل */}
+          <button
+            onClick={handleActivateSubscription}
+            disabled={
+              !selectedUserId || !selectedPlanForUser || activatingSubscription
+            }
+            className="px-6 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white text-sm font-semibold transition shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {activatingSubscription ? (
+              <Loader2 className="h-4 w-4 animate-spin inline mr-1" />
+            ) : (
+              <Crown className="h-4 w-4 inline mr-1" />
+            )}
+            <span>
+              {activatingSubscription
+                ? "Activating..."
+                : `Activate ${
+                    selectedBillingCycle === "monthly" ? "Monthly" : "Yearly"
+                  } Plan`}
+            </span>
+          </button>
+        </div>
+
+        {/* ✅ عرض السعر حسب الاختيار */}
+        {selectedPlanForUser && (
+          <div className="mt-2 text-xs text-slate-400">
+            Price:{" "}
+            <span className="text-white font-mono font-bold">
+              {selectedBillingCycle === "monthly"
+                ? `$${
+                    PLANS[selectedPlanForUser as keyof typeof PLANS]?.price || 0
+                  }/month`
+                : `$${
+                    PLANS[selectedPlanForUser as keyof typeof PLANS]
+                      ?.priceYearly || 0
+                  }/year`}
+            </span>
+            {selectedBillingCycle === "yearly" && (
+              <span className="text-emerald-400 ml-2">
+                (Save $
+                {(
+                  (PLANS[selectedPlanForUser as keyof typeof PLANS]?.price ||
+                    0) *
+                    12 -
+                  (PLANS[selectedPlanForUser as keyof typeof PLANS]
+                    ?.priceYearly || 0)
+                ).toFixed(2)}
+                )
+              </span>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Tabs */}
       <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-800 pb-2 mb-6">
@@ -1117,7 +1305,10 @@ function AdminPage() {
                   </span>
                   <span className="text-sm font-bold text-white">
                     {stats.totalUsers > 0
-                      ? `${(((stats.totalPaidUsers || 0) / stats.totalUsers) * 100).toFixed(1)}%`
+                      ? `${(
+                          ((stats.totalPaidUsers || 0) / stats.totalUsers) *
+                          100
+                        ).toFixed(1)}%`
                       : "0%"}
                   </span>
                 </div>
@@ -1328,6 +1519,7 @@ function AdminPage() {
       {/* ============================================================ */}
       {activeTab === "payments" && (
         <div className="space-y-4">
+          {/* ✅ بطاقة الإحصائيات */}
           <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 to-emerald-600/5 border border-emerald-500/20">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div>
@@ -1338,8 +1530,7 @@ function AdminPage() {
                   {formatCurrency(stats?.totalRevenue || 0)}
                 </p>
                 <p className="text-xs text-slate-400 mt-1">
-                  {payments.filter((p) => p.status === "SUCCEEDED").length}{" "}
-                  successful payments
+                  {payments.length} subscribed users
                 </p>
               </div>
               <div className="flex items-center gap-4 text-xs">
@@ -1354,44 +1545,86 @@ function AdminPage() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-slate-400">Active Subs</p>
+                  <p className="text-slate-400">Revenue</p>
                   <p className="text-white font-bold">
-                    {stats?.activeSubscriptions || 0}
+                    {formatCurrency(stats?.totalRevenue || 0)}
                   </p>
                 </div>
               </div>
             </div>
           </div>
 
+          {/* ✅ جدول المدفوعات */}
           <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
             <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
               <CreditCard className="h-4 w-4 text-emerald-400" />
-              Payment History ({filteredPayments.length})
+              Subscribed Users ({payments.length})
             </h3>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-800 text-xs text-slate-400">
+                    <th className="text-left py-2 px-3">#</th>
                     <th className="text-left py-2 px-3">User</th>
                     <th className="text-left py-2 px-3">Plan</th>
-                    <th className="text-left py-2 px-3">Amount</th>
+                    <th className="text-left py-2 px-3">Price</th>
+                    <th className="text-left py-2 px-3">Billing</th>
                     <th className="text-left py-2 px-3">Status</th>
-                    <th className="text-left py-2 px-3">Date</th>
+                    <th className="text-left py-2 px-3">Expires</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredPayments.length > 0 ? (
-                    filteredPayments.map((payment) => {
-                      const planInfo = getPlanDisplayInfo(
-                        payment.metadata?.planId || "free",
-                      );
+                  {payments.length > 0 ? (
+                    payments.map((payment, index) => {
+                      // ✅ الحصول على الخطة من المستخدم
+                      const userPlan =
+                        payment.user?.plan ||
+                        payment.metadata?.planId ||
+                        "free";
+
+                      // ✅ الحصول على سعر الخطة من PLANS مباشرة
+                      const planPrice =
+                        PLANS[userPlan as keyof typeof PLANS]?.price || 0;
+                      const planPriceYearly =
+                        PLANS[userPlan as keyof typeof PLANS]?.priceYearly ||
+                        planPrice * 12;
+
+                      // ✅ تحديد نوع الفوترة
+                      const billingCycle =
+                        payment.metadata?.billingCycle || "monthly";
+                      const displayPrice =
+                        billingCycle === "yearly" ? planPriceYearly : planPrice;
+                      const billingLabel =
+                        billingCycle === "yearly" ? "Yearly" : "Monthly";
+
+                      // ✅ معلومات الخطة للعرض
+                      const planInfo = getPlanDisplayInfo(userPlan);
+
+                      // ✅ حالة الاشتراك
+                      const expiresAt =
+                        payment.metadata?.expiresAt ||
+                        payment.user?.subscriptionExpiresAt;
+                      const isActive = expiresAt
+                        ? new Date(expiresAt) > new Date()
+                        : true;
+
                       return (
                         <tr
                           key={payment.id}
                           className="border-b border-slate-800/50 hover:bg-slate-800/30 transition"
                         >
-                          <td className="py-2 px-3 text-slate-300">
-                            {payment.user?.email || "Unknown User"}
+                          <td className="py-2 px-3 text-slate-500 text-xs">
+                            {index + 1}
+                          </td>
+                          <td className="py-2 px-3">
+                            <div>
+                              <p className="text-white text-sm">
+                                {payment.user?.name || "Unknown"}
+                              </p>
+                              <p className="text-slate-400 text-xs">
+                                {payment.user?.email || "No email"}
+                              </p>
+                            </div>
                           </td>
                           <td className="py-2 px-3">
                             <span
@@ -1401,29 +1634,36 @@ function AdminPage() {
                               {planInfo.displayName}
                             </span>
                           </td>
-                          <td className="py-2 px-3 text-white font-mono">
-                            {formatCurrency(payment.amount)}
+                          <td className="py-2 px-3">
+                            <div>
+                              <p className="text-white font-mono font-bold">
+                                {formatCurrency(displayPrice)}
+                              </p>
+                              <p className="text-slate-500 text-[10px]">
+                                {billingLabel}
+                              </p>
+                            </div>
+                          </td>
+                          <td className="py-2 px-3">
+                            <span className="text-xs text-slate-300 capitalize">
+                              {billingLabel}
+                            </span>
                           </td>
                           <td className="py-2 px-3">
                             <span
                               className={`text-xs px-2 py-0.5 rounded-full ${
-                                payment.status === "SUCCEEDED"
+                                isActive
                                   ? "bg-emerald-500/20 text-emerald-400"
-                                  : payment.status === "FAILED"
-                                    ? "bg-rose-500/20 text-rose-400"
-                                    : "bg-amber-500/20 text-amber-400"
+                                  : "bg-rose-500/20 text-rose-400"
                               }`}
                             >
-                              {payment.status === "SUCCEEDED"
-                                ? "✅"
-                                : payment.status === "FAILED"
-                                  ? "❌"
-                                  : "⏳"}{" "}
-                              {payment.status}
+                              {isActive ? "✅ Active" : "❌ Expired"}
                             </span>
                           </td>
                           <td className="py-2 px-3 text-slate-400 text-xs">
-                            {new Date(payment.createdAt).toLocaleDateString()}
+                            {expiresAt
+                              ? new Date(expiresAt).toLocaleDateString()
+                              : "Never"}
                           </td>
                         </tr>
                       );
@@ -1431,13 +1671,13 @@ function AdminPage() {
                   ) : (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={7}
                         className="py-8 text-center text-slate-400"
                       >
                         <CreditCard className="h-10 w-10 mx-auto mb-2 text-slate-600" />
-                        <p>No payments found</p>
+                        <p>No subscribed users found</p>
                         <p className="text-xs text-slate-500 mt-1">
-                          Payments will appear here when users subscribe
+                          Users with paid subscriptions will appear here
                         </p>
                       </td>
                     </tr>
@@ -1539,7 +1779,11 @@ function AdminPage() {
                         </td>
                         <td className="py-2 px-3">
                           <span
-                            className={`text-xs px-2 py-0.5 rounded-full ${license.isActive ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"}`}
+                            className={`text-xs px-2 py-0.5 rounded-full ${
+                              license.isActive
+                                ? "bg-emerald-500/20 text-emerald-400"
+                                : "bg-rose-500/20 text-rose-400"
+                            }`}
                           >
                             {license.isActive ? "Active" : "Revoked"}
                           </span>
