@@ -12,14 +12,14 @@ A modern, responsive web application built with **Next.js** and **TypeScript** f
 ### Prerequisites
 
 - **Node.js** 18.17 or higher
-- **npm** or **yarn** package manager
+- **npm** package manager
 
 ### Installation
 
 1. Clone the repository:
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/eslam-cmd/ScanLens-client
 cd ScanLens/client
 ```
 
@@ -41,8 +41,6 @@ NEXT_PUBLIC_API_URL=http://localhost:3000/api
 
 ```bash
 npm run dev
-# or
-yarn dev
 ```
 
 Visit `http://localhost:3000` in your browser.
@@ -148,18 +146,9 @@ The application includes protected routes using custom guards:
 
 ![Admin Panel](./public/img/User%20Subscription%20Management.png)
 
-## 🤝 Contributing
-
-We welcome contributions! Please follow our [CONTRIBUTING.md](./CONTRIBUTING.md) guidelines for:
-
-- Code style standards
-- Git workflow
-- Pull request process
-- Testing requirements
-
 ##  Backend Repository
 
-Check out the **ScanLens Backend API** here:
+Check out the **ScanLens Backend** here:
 👉 [ScanLens - Backend](https://github.com/eslam-cmd/ScanLens-server)
 
 
