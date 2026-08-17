@@ -34,15 +34,12 @@ export default function LoginPage() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const router = useRouter();
 
-  // ✅ التحقق من حالة المستخدم
   const checkAuth = async () => {
     try {
       const res = await api.get("/auth/me", { withCredentials: true });
       if (res.data?.user) {
-        // ✅ إذا كان مسجل دخول، يخرج مع رسالة
         setSuccessMsg("You are already logged in. Redirecting...");
         setTimeout(() => {
-          // ✅ التحقق إذا كان المستخدم أدمن يروح للـ Admin Dashboard
           if (res.data.user.role === "admin") {
             router.push("/admin");
           } else {
@@ -52,10 +49,8 @@ export default function LoginPage() {
         return;
       }
     } catch (error) {
-      // ✅ المستخدم غير مسجل دخول - يكمل في الصفحة
       console.log("User not logged in, showing login page");
     } finally {
-      // ✅ في كل الأحوال، نوقف شاشة التحميل
       setIsCheckingAuth(false);
     }
   };
@@ -99,6 +94,7 @@ export default function LoginPage() {
         router.push("/history");
       }, 1000);
     } catch (err: any) {
+      // ✅ استقبال رسالة الخطأ من السيرفر
       const message = err.response?.data?.message;
       setError(
         Array.isArray(message)
@@ -116,7 +112,6 @@ export default function LoginPage() {
     }
   };
 
-  // ✅ شاشة التحميل أثناء التحقق
   if (isCheckingAuth) {
     return (
       <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center">

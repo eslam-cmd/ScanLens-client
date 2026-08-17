@@ -127,16 +127,38 @@ export default function Header() {
     setMobileMenuOpen(false);
   }, [pathname]);
 
+  // ✅ دالة تسجيل الخروج (المعدلة)
   const handleLogout = async () => {
     try {
+      // ✅ محاولة إعلام السيرفر بتسجيل الخروج
       await api.post("/auth/logout", {}, { withCredentials: true });
-    } catch {
-      // Ignore errors
+    } catch (error) {
+      console.log("Logout error:", error);
     } finally {
+      // ✅ حذف التوكن من localStorage
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("user");
+        localStorage.removeItem("token");
+
+        // ✅ حذف الكوكيز
+        document.cookie =
+          "access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+        document.cookie =
+          "refresh_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      }
+
+      // ✅ تنظيف الـ State
       setUser(null);
+      setUserRole("user");
+      setUserPlan("free");
+      setScansCount(0);
       setMobileMenuOpen(false);
       setDropdownOpen(false);
+
+      // ✅ التوجيه إلى login مع تحديث الصفحة
       router.push("/login");
+      router.refresh();
     }
   };
 
@@ -176,7 +198,7 @@ export default function Header() {
       label: "Admin Dashboard",
       icon: LayoutDashboard,
       highlight: true,
-    }
+    },
   ];
 
   const getInitials = (name: string) => {

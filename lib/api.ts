@@ -1,7 +1,8 @@
 // client/lib/api.ts
 import axios from "axios";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://scan-lens-server.vercel.app";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "https://scan-lens-server.vercel.app";
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -11,10 +12,16 @@ export const api = axios.create({
   },
 });
 
-// ✅ Interceptor للطلب - إضافة Token من الكوكيز
+// ✅ Interceptor للطلب - إضافة Token من localStorage
 api.interceptors.request.use(
   (config) => {
-    // ✅ نترك الكوكيز ترسل تلقائياً مع withCredentials: true
+    // ✅ جلب التوكن من localStorage
+    if (typeof window !== "undefined") {
+      const token = localStorage.getItem("access_token");
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    }
     return config;
   },
   (error) => {
@@ -22,9 +29,16 @@ api.interceptors.request.use(
   },
 );
 
-// ✅ Interceptor للاستجابة - التعامل مع 401
+// ✅ Interceptor للاستجابة - حفظ التوكن من الـ Response
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // ✅ إذا كان هناك accessToken في الـ Response، احفظه في localStorage
+    if (response.data?.accessToken) {
+      localStorage.setItem("access_token", response.data.accessToken);
+      console.log("✅ Token saved to localStorage");
+    }
+    return response;
+  },
   async (error) => {
     const originalRequest = error.config;
 
@@ -44,6 +58,10 @@ api.interceptors.response.use(
 
         if (refreshResponse.data.accessToken) {
           console.log("✅ Token refreshed successfully");
+          localStorage.setItem(
+            "access_token",
+            refreshResponse.data.accessToken,
+          );
           // ✅ إعادة المحاولة مع الـ Token الجديد
           return api(originalRequest);
         }
@@ -51,6 +69,7 @@ api.interceptors.response.use(
         console.log("❌ Token refresh failed, redirecting to login");
         // ✅ إذا فشل التجديد، إعادة التوجيه إلى تسجيل الدخول
         if (typeof window !== "undefined") {
+          localStorage.removeItem("access_token");
           document.cookie =
             "access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
           if (!window.location.pathname.includes("/login")) {
@@ -86,8 +105,6 @@ api.interceptors.response.use(
   },
 );
 
-// ... باقي الدوال كما هي
-
 // ✅ دالة مساعدة للتحقق من حالة المستخدم
 export const getCurrentUser = async () => {
   try {
@@ -114,16 +131,26 @@ export const register = async (
   return res.data;
 };
 
-// ✅ دالة مساعدة لتسجيل الخروج
 export const logout = async () => {
   try {
+    // ✅ محاولة إعلام السيرفر بتسجيل الخروج
     await api.post("/auth/logout", {}, { withCredentials: true });
+  } catch (error) {
+    console.log("Logout error:", error);
   } finally {
+    // ✅ حذف التوكن من localStorage
     if (typeof window !== "undefined") {
+      localStorage.removeItem("access_token");
+
+      // ✅ حذف الكوكيز (كطبقة أمان إضافية)
       document.cookie =
         "access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-    }
-    if (typeof window !== "undefined") {
+
+      // ✅ حذف أي بيانات أخرى في localStorage
+      localStorage.removeItem("user");
+      localStorage.removeItem("token");
+
+      // ✅ التوجيه إلى صفحة تسجيل الدخول
       window.location.href = "/login";
     }
   }

@@ -1,3 +1,4 @@
+// client/app/verify/page.tsx
 "use client";
 
 import { useState, useEffect, Suspense, useCallback, useRef } from "react";
@@ -127,7 +128,12 @@ function VerifyContent() {
     setSuccessMsg("");
 
     try {
-      await api.post("/auth/verify-otp", { email, code: fullCode });
+      const response = await api.post("/auth/verify-otp", {
+        email,
+        code: fullCode,
+      });
+
+      // ✅ التوكن سيتم حفظه تلقائياً في localStorage عن طريق الـ Interceptor
 
       setSuccessMsg("Account verified successfully! Redirecting...");
       setTimeout(() => {
