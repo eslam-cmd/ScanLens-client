@@ -6,72 +6,33 @@ const API_BASE_URL =
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
-  withCredentials: true,
+  withCredentials: true, // ✅ إجباري — يخلي المتصفح يرسل ويستقبل الكوكيز مع كل طلب
   headers: {
     "Content-Type": "application/json",
   },
 });
 
-// ✅ Interceptor للطلب - إضافة Token من localStorage
-api.interceptors.request.use(
-  (config) => {
-    // ✅ جلب التوكن من localStorage
-    if (typeof window !== "undefined") {
-      const token = localStorage.getItem("access_token");
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  },
-);
-
-// ✅ Interceptor للاستجابة - حفظ التوكن من الـ Response
+// ✅ Interceptor للاستجابة - معالجة 401 وتجديد التوكن تلقائيًا عبر الكوكي
 api.interceptors.response.use(
-  (response) => {
-    // ✅ إذا كان هناك accessToken في الـ Response، احفظه في localStorage
-    if (response.data?.accessToken) {
-      localStorage.setItem("access_token", response.data.accessToken);
-      console.log("✅ Token saved to localStorage");
-    }
-    return response;
-  },
+  (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
-    // ✅ إذا كان 401 ولم يتم إعادة المحاولة
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
       try {
         console.log("🔄 Attempting to refresh token...");
 
-        // ✅ محاولة تجديد الـ Token
-        const refreshResponse = await api.post(
-          "/auth/refresh",
-          {},
-          { withCredentials: true },
-        );
+        // ✅ الكوكي القديمة بترسل تلقائيًا، والسيرفر بيرجع كوكي جديدة بالـ Response
+        await api.post("/auth/refresh", {}, { withCredentials: true });
 
-        if (refreshResponse.data.accessToken) {
-          console.log("✅ Token refreshed successfully");
-          localStorage.setItem(
-            "access_token",
-            refreshResponse.data.accessToken,
-          );
-          // ✅ إعادة المحاولة مع الـ Token الجديد
-          return api(originalRequest);
-        }
+        console.log("✅ Token refreshed successfully");
+        // ✅ إعادة المحاولة، الكوكي الجديدة رح تنرسل تلقائيًا
+        return api(originalRequest);
       } catch (refreshError) {
         console.log("❌ Token refresh failed, redirecting to login");
-        // ✅ إذا فشل التجديد، إعادة التوجيه إلى تسجيل الدخول
         if (typeof window !== "undefined") {
-          localStorage.removeItem("access_token");
-          document.cookie =
-            "access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
           if (!window.location.pathname.includes("/login")) {
             window.location.href = "/login";
           }
@@ -80,18 +41,15 @@ api.interceptors.response.use(
       }
     }
 
-    // ✅ التعامل مع الأخطاء الأخرى
     if (error.response) {
       const status = error.response.status;
 
       if (status === 403) {
         console.log("❌ Forbidden - insufficient permissions");
       }
-
       if (status === 429) {
         console.warn("Rate limit exceeded. Please try again later.");
       }
-
       if (status === 500) {
         console.error("Server error. Please try again later.");
       }
@@ -133,24 +91,11 @@ export const register = async (
 
 export const logout = async () => {
   try {
-    // ✅ محاولة إعلام السيرفر بتسجيل الخروج
     await api.post("/auth/logout", {}, { withCredentials: true });
   } catch (error) {
     console.log("Logout error:", error);
   } finally {
-    // ✅ حذف التوكن من localStorage
     if (typeof window !== "undefined") {
-      localStorage.removeItem("access_token");
-
-      // ✅ حذف الكوكيز (كطبقة أمان إضافية)
-      document.cookie =
-        "access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-
-      // ✅ حذف أي بيانات أخرى في localStorage
-      localStorage.removeItem("user");
-      localStorage.removeItem("token");
-
-      // ✅ التوجيه إلى صفحة تسجيل الدخول
       window.location.href = "/login";
     }
   }
@@ -183,5 +128,4 @@ export const upgradePlan = async (
   return res.data;
 };
 
-// ✅ تصدير الـ api كـ default
 export default api;
