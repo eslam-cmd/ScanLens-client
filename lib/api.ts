@@ -13,22 +13,31 @@ export const api = axios.create({
 });
 
 // ✅ Interceptor للاستجابة - معالجة 401 وتجديد التوكن تلقائيًا عبر الكوكي
+// client/lib/api.ts
+
+// client/lib/api.ts
+
+// ✅ Interceptor للاستجابة
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+
+    // ✅ لا تعيد محاولة طلبات التحقق (verify-otp) أو تسجيل الدخول (login)
+    if (
+      originalRequest.url?.includes('/verify-otp') ||
+      originalRequest.url?.includes('/auth/login')
+    ) {
+      return Promise.reject(error);
+    }
 
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
       try {
         console.log("🔄 Attempting to refresh token...");
-
-        // ✅ الكوكي القديمة بترسل تلقائيًا، والسيرفر بيرجع كوكي جديدة بالـ Response
         await api.post("/auth/refresh", {}, { withCredentials: true });
-
         console.log("✅ Token refreshed successfully");
-        // ✅ إعادة المحاولة، الكوكي الجديدة رح تنرسل تلقائيًا
         return api(originalRequest);
       } catch (refreshError) {
         console.log("❌ Token refresh failed, redirecting to login");
@@ -41,28 +50,9 @@ api.interceptors.response.use(
       }
     }
 
-    if (error.response) {
-      const status = error.response.status;
-
-      if (status === 403) {
-        console.log("❌ Forbidden - insufficient permissions");
-      }
-      if (status === 429) {
-        console.warn("Rate limit exceeded. Please try again later.");
-      }
-      if (status === 500) {
-        console.error("Server error. Please try again later.");
-      }
-    }
-
-    if (error.code === "ERR_NETWORK") {
-      console.error("Network error. Please check your internet connection.");
-    }
-
     return Promise.reject(error);
-  },
+  }
 );
-
 // ✅ دالة مساعدة للتحقق من حالة المستخدم
 export const getCurrentUser = async () => {
   try {

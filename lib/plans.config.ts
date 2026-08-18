@@ -66,6 +66,8 @@ export interface PlanLimits {
   scansPerDay: number | string;
   concurrentScans: number | string;
   historyRetention: string;
+  deepScanLimit: number | string;   // ✅ جديد
+  unlimitedScans: boolean;          // ✅ جديد
   aiFixes: boolean;
   exportReports: boolean;
   deepScan: boolean;
@@ -134,7 +136,7 @@ export const PLAN_FEATURES: Record<PlanType, PlanFeatures> = {
     badge: "Professional",
     badgeColor: "text-sky-400 bg-sky-500/20",
     historyRetention: 90,
-    maxScans: 100,
+    maxScans: 50,                    // ✅ 50 فحص يومياً
     exportReports: true,
     aiFixes: true,
     deepScan: true,
@@ -155,7 +157,7 @@ export const PLAN_FEATURES: Record<PlanType, PlanFeatures> = {
     badge: "Elite",
     badgeColor: "text-purple-400 bg-purple-500/20",
     historyRetention: 365,
-    maxScans: Infinity,
+    maxScans: Infinity,              // ✅ غير محدود
     exportReports: true,
     aiFixes: true,
     deepScan: true,
@@ -186,19 +188,21 @@ export const PLANS: Record<PlanType, Plan> = {
     borderColor: "border-slate-700",
     features: [
       "5 scans per day",
+      "5 deep scans per day",
       "1 concurrent scan",
       "7-day history retention",
       "Manual report export",
-      "Standard scan only",
       "Community support",
     ],
     limits: {
-      scansPerDay: 5,
+      scansPerDay:10,              // ✅ 10 فحوصات يومياً
       concurrentScans: 1,
       historyRetention: "7 days",
+      deepScanLimit: 5,             // ✅ 5 Deep Scans يومياً
+      unlimitedScans: false,        // ✅ غير محدود؟ لا
       aiFixes: false,
       exportReports: true,
-      deepScan: false,
+      deepScan: true,
       prioritySupport: false,
       customRules: false,
       teamMembers: 1,
@@ -217,8 +221,8 @@ export const PLANS: Record<PlanType, Plan> = {
     id: "pro",
     name: "Pro",
     icon: Crown,
-    price: 29.99, // ✅ السعر الصحيح
-    priceYearly: 299.99, // ✅ السعر الصحيح
+    price: 29.99,
+    priceYearly: 299.99,
     description: "Ideal for professional developers and small teams",
     color: "from-sky-500 to-indigo-500",
     bgColor: "bg-sky-950/30",
@@ -226,7 +230,8 @@ export const PLANS: Record<PlanType, Plan> = {
     badge: "Most Popular",
     recommended: true,
     features: [
-      "100 scans per day",
+      "50 scans per day",
+      "Unlimited deep scans",
       "5 concurrent scans",
       "90-day history retention",
       "Advanced AI fixes",
@@ -237,9 +242,11 @@ export const PLANS: Record<PlanType, Plan> = {
       "Full API access",
     ],
     limits: {
-      scansPerDay: 100,
+      scansPerDay: 50,              // ✅ 50 فحص يومياً
       concurrentScans: 5,
       historyRetention: "90 days",
+      deepScanLimit: Infinity,      // ✅ غير محدود
+      unlimitedScans: false,        // ✅ غير محدود؟ لا (50 فقط)
       aiFixes: true,
       exportReports: true,
       deepScan: true,
@@ -261,8 +268,8 @@ export const PLANS: Record<PlanType, Plan> = {
     id: "extra",
     name: "Extra",
     icon: Gem,
-    price: 49.99, // ✅ السعر الصحيح
-    priceYearly: 499.99, // ✅ السعر الصحيح
+    price: 49.99,
+    priceYearly: 499.99,
     description: "For enterprises and power users needing maximum capabilities",
     color: "from-purple-500 to-pink-500",
     bgColor: "bg-purple-950/30",
@@ -270,6 +277,7 @@ export const PLANS: Record<PlanType, Plan> = {
     badge: "Best Value",
     features: [
       "Unlimited scans",
+      "Unlimited deep scans",
       "Unlimited concurrent scans",
       "1-year history retention",
       "Unlimited AI fixes",
@@ -281,17 +289,19 @@ export const PLANS: Record<PlanType, Plan> = {
       "White label",
     ],
     limits: {
-      scansPerDay: "∞",
-      concurrentScans: "∞",
+      scansPerDay: Infinity,        // ✅ غير محدود
+      concurrentScans: Infinity,
       historyRetention: "1 year",
+      deepScanLimit: Infinity,      // ✅ غير محدود
+      unlimitedScans: true,         // ✅ غير محدود؟ نعم
       aiFixes: true,
       exportReports: true,
       deepScan: true,
       prioritySupport: true,
       customRules: true,
-      teamMembers: "∞",
+      teamMembers: Infinity,
       apiAccess: true,
-      maxWebsites: "∞",
+      maxWebsites: Infinity,
       scanTimeout: 300,
       advancedAnalytics: true,
       customReports: true,
@@ -395,7 +405,6 @@ export const checkUserCapability = (
   }
 };
 
-// ✅ 1. getPlanPrice
 export const getPlanPrice = (
   planId: PlanType,
   cycle: BillingCycle = "monthly",
@@ -407,23 +416,19 @@ export const getPlanPrice = (
   return `$${price}`;
 };
 
-// ✅ 2. getAllPlans
 export const getAllPlans = (): Plan[] => {
   return Object.values(PLANS);
 };
 
-// ✅ 3. isPaidPlan
 export const isPaidPlan = (plan: PlanType): boolean => {
   return plan !== "free";
 };
 
-// ✅ 4. getPlanDisplayName
 export const getPlanDisplayName = (planId: PlanType): string => {
   const features = getPlanFeatures(planId);
   return features.name;
 };
 
-// ✅ 5. getPlanIcon
 export const getPlanIcon = (planId: PlanType): any => {
   const features = getPlanFeatures(planId);
   return features.icon;

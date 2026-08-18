@@ -68,6 +68,10 @@ export default function LoginPage() {
   const canSubmit =
     email && password && isEmailValid && isPasswordValid && !loading;
 
+  // client/app/login/page.tsx
+
+  // client/app/login/page.tsx
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -77,35 +81,56 @@ export default function LoginPage() {
     try {
       const res = await api.post("/auth/login", { email, password });
 
-      if (res.data?.requiresVerification) {
-        setSuccessMsg(
-          "Account requires verification. Redirecting to OTP page...",
-        );
+      console.log("🔍 [DEBUG] Login response:", res.data);
+
+      // ✅ حالة 1: الحساب غير مفعّل (يطلب OTP)
+      if (res.data?.requiresVerification === true) {
+        setSuccessMsg("Account requires verification. Redirecting to OTP page...");
         setTimeout(() => {
-          router.push(
-            `/verify?email=${encodeURIComponent(res.data.email || email)}`,
-          );
+          router.push(`/verify?email=${encodeURIComponent(res.data.email || email)}`);
         }, 1200);
         return;
       }
 
-      setSuccessMsg("Signed in successfully! Redirecting...");
-      setTimeout(() => {
-        router.push("/history");
-      }, 1000);
+      // ✅ حالة 2: تسجيل الدخول ناجح (يوجد accessToken)
+      if (res.data?.accessToken) {
+        setSuccessMsg("Signed in successfully! Redirecting...");
+
+        // ✅ تخزين التوكن في localStorage (اختياري)
+        // localStorage.setItem('accessToken', res.data.accessToken);
+
+        setTimeout(() => {
+          // ✅ توجيه حسب الدور
+          if (res.data.user?.role === "admin") {
+            router.push("/admin");
+          } else {
+            router.push("/history");
+          }
+        }, 1000);
+        return;
+      }
+
+      // ✅ حالة 3: رسالة نجاح فقط (بدون accessToken)
+      if (res.data?.message) {
+        setSuccessMsg(res.data.message);
+        setTimeout(() => {
+          router.push("/history");
+        }, 1000);
+        return;
+      }
+
     } catch (err: any) {
-      // ✅ استقبال رسالة الخطأ من السيرفر
+      console.error("❌ Login error:", err);
       const message = err.response?.data?.message;
       setError(
         Array.isArray(message)
           ? message.join(", ")
-          : message || "Invalid email or password",
+          : message || "Invalid email or password"
       );
     } finally {
       setLoading(false);
     }
   };
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && canSubmit) {
       handleSubmit(e as any);
