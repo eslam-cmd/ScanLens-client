@@ -156,7 +156,7 @@ The application includes protected routes using custom guards:
 
 ### Scan Results
 
-![Scan Results](./public/img/Website-Deep-Scan%20Page.png)
+![Scan Results](./public/img/Website-Deep-Scan-Page.png)
 
 ### AI Recommendations
 
@@ -164,7 +164,7 @@ The application includes protected routes using custom guards:
 
 ### Admin Panel
 
-![Admin Panel](./public/img/User%20Subscription%20Management.png)
+![Admin Panel](./public/img/User%20Subscription-Management.png)
 
 
 
