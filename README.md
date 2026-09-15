@@ -1,43 +1,43 @@
-# ScanLens — Frontend Client
+# ScanLens - Frontend
 
-![Next.js](https://img.shields.io/badge/Next.js-000000?logo=nextdotjs&logoColor=white)
-![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?logo=tailwindcss&logoColor=white)
-![React](https://img.shields.io/badge/React-61DAFB?logo=react&logoColor=black)
+A modern, responsive web application built with **Next.js** and **TypeScript** for comprehensive security scanning and vulnerability assessment. The frontend provides an intuitive interface for users to manage scans, view reports, and handle subscriptions.
 
-A modern, responsive web application built with Next.js and TypeScript for comprehensive security scanning and vulnerability assessment. Provides an intuitive interface for managing scans, viewing reports, and handling subscriptions.
-
-> 🔗 Backend repository: [ScanLens — Backend API](https://github.com/eslam-cmd/ScanLens-server)
-
----
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Next.js](https://img.shields.io/badge/Next.js-15+-black)
+![TypeScript](https://img.shields.io/badge/TypeScript-5+-blue)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-4+-38B2AC)
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- Node.js >= 18.17
-- npm package manager
+- **Node.js** 18.17 or higher
+- **npm** package manager
 
 ### Installation
 
-```bash
-# Clone the repository
-git clone https://github.com/eslam-cmd/ScanLens-client.git
-cd ScanLens-client
+1. Clone the repository:
 
-# Install dependencies
-npm install
+```bash
+git clone https://github.com/eslam-cmd/ScanLens-client
+cd ScanLens-client
 ```
 
-### Environment Configuration
+2. Install dependencies:
 
-Create a `.env.local` file in the root directory:
+```bash
+npm install
+# or
+yarn install
+```
+
+3. Create environment configuration (`.env.local`):
 
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:5000/api
 ```
 
-### Run Development Server
+4. Run development server:
 
 ```bash
 npm run dev
@@ -45,11 +45,9 @@ npm run dev
 
 Visit `http://localhost:3000` in your browser.
 
----
-
 ## 📁 Project Structure
 
-```text
+```
 client/
 ├── app/                          # Next.js App Router pages
 │   ├── layout.tsx               # Root layout wrapper
@@ -65,102 +63,93 @@ client/
 │   ├── subscription/            # Subscription management
 │   ├── buy-license/             # License purchasing
 │   ├── settings/                # User settings
-│   └── help/                    # Help & documentation
+│   └── help/                    # Help/documentation
 ├── components/                  # Reusable React components
-│   └── layout/
+│   └── layout/                  # Layout components
 │       ├── Header.tsx
 │       ├── Footer.tsx
 │       └── UpgradeModal.tsx
-├── lib/                         # Utilities & helpers
-│   ├── api.ts                   # Axios API client
-│   ├── plans.config.ts          # Subscription plans
+├── lib/                         # Utility functions & helpers
+│   ├── api.ts                   # API client configuration
+│   ├── plans.config.ts          # Subscription plans data
 │   └── guards/                  # Route protection
-│       ├── withAuth.tsx
-│       ├── withAdmin.tsx
-│       └── withSubscription.tsx
-├── public/
-│   └── img/
-├── tailwind.config.ts
-├── tsconfig.json
-├── next.config.ts
-├── eslint.config.mjs
-├── postcss.config.mjs
-└── package.json
+│       ├── withAuth.tsx         # Auth guard
+│       ├── withAdmin.tsx        # Admin guard
+│       └── withSubscription.tsx # Subscription guard
+├── public/                      # Static assets
+│   └── img/                     # Images directory
+├── tailwind.config.ts           # Tailwind CSS configuration
+├── tsconfig.json               # TypeScript configuration
+├── next.config.ts              # Next.js configuration
+├── eslint.config.mjs           # ESLint configuration
+├── postcss.config.mjs          # PostCSS configuration
+└── package.json                # Dependencies
 ```
-
----
-
-## ✨ Key Features
-
-- 🔍 **Scan Management** — Create, execute, and manage security scans
-- 📈 **Detailed Reports** — Comprehensive vulnerability assessment reports
-- 🤖 **AI Recommendations** — Gemini-powered remediation suggestions
-- 👥 **Authentication** — Secure login, registration, and email verification
-- 💳 **Subscription Management** — Handle plans, billing, and licensing
-- ⚙️ **User Settings** — Customizable preferences
-- 👨‍💼 **Admin Dashboard** — Manage users and system configuration
-
----
-
-## 🛠️ Tech Stack
-
-| Technology | Purpose |
-| :--- | :--- |
-| **Next.js 15+** | React framework with App Router |
-| **TypeScript** | Type-safe development |
-| **Tailwind CSS 4+** | Utility-first styling |
-| **React** | UI component library |
-| **Axios** | HTTP client for API requests |
-
----
-
-## 🔐 Authentication & Authorization
-
-Protected routes using custom guards:
-
-- `withAuth` — Requires authenticated user session
-- `withAdmin` — Requires admin privileges
-- `withSubscription` — Validates active subscription status
-
----
 
 ## 🛠️ Development
 
+### Build for production:
+
 ```bash
-# Production build
 npm run build
 npm run start
+```
 
-# Linting
+### Linting & Code Quality:
+
+```bash
 npm run lint
 ```
 
----
+### Key Technologies
+
+| Technology          | Purpose                                     |
+| ------------------- | ------------------------------------------- |
+| **Next.js 15+**     | React framework for SSR & static generation |
+| **TypeScript**      | Type-safe development                       |
+| **Tailwind CSS 4+** | Utility-first CSS framework                 |
+| **React**           | UI component library                        |
+| **Axios**           | HTTP client for API requests                |
+
+## 🔐 Authentication & Authorization
+
+The application includes protected routes using custom guards:
+
+- **`withAuth`** - Requires user login
+- **`withAdmin`** - Requires admin privileges
+- **`withSubscription`** - Checks active subscription status
+
+## 📊 Key Features
+
+- 🔍 **Scan Management** - Create, view, and manage security scans
+- 📈 **Detailed Reports** - Comprehensive vulnerability assessment reports
+- 👥 **User Authentication** - Secure login and registration
+- 💳 **Subscription Management** - Handle plans and billing
+- ⚙️ **Settings** - Customizable user preferences
+- 👨‍💼 **Admin Dashboard** - Manage users and system configuration
 
 ## 📸 Screenshots
 
 ### Dashboard
-![Dashboard](public/img/dashboard.png)
+
+![Subscription](./public/img/Subscription-Section.png)
 
 ### Scan Results
-![Scan Results](public/img/scan-results.png)
+
+![Scan Results](./public/img/Website-Deep-Scan%20Page.png)
 
 ### AI Recommendations
-![AI Recommendations](public/img/ai-recommendations.png)
+
+![AI Recommendations](./public/img/AI-solution-proposal.png)
 
 ### Admin Panel
-![Admin Panel](public/img/admin-panel.png)
 
----
+![Admin Panel](./public/img/User%20Subscription%20Management.png)
 
-## 📬 Contact
+##  Backend Repository
 
-**Islam Hadaya**
+Check out the **ScanLens Backend** here:
+👉 [ScanLens - Backend](https://github.com/eslam-cmd/ScanLens-server)
 
-- Portfolio: [Personal Website](https://my-profile-personal-nextjs.vercel.app)
-- LinkedIn: [linkedin.com/in/islam-hadaya](https://linkedin.com/in/islam-hadaya)
-- Email: hdayaaslam34@gmail.com
 
----
-
-*Last Updated: August 2026*
+**Last Updated:** September 2026
