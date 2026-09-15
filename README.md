@@ -7,6 +7,11 @@ A modern, responsive web application built with **Next.js** and **TypeScript** f
 ![TypeScript](https://img.shields.io/badge/TypeScript-5+-blue)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-4+-38B2AC)
 
+##  Backend Repository
+
+Check out the **ScanLens Backend** here:
+👉 [ScanLens - Backend](https://github.com/eslam-cmd/ScanLens-server)
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -146,10 +151,6 @@ The application includes protected routes using custom guards:
 
 ![Admin Panel](./public/img/User%20Subscription%20Management.png)
 
-##  Backend Repository
-
-Check out the **ScanLens Backend** here:
-👉 [ScanLens - Backend](https://github.com/eslam-cmd/ScanLens-server)
 
 
 **Last Updated:** September 2026
