@@ -164,7 +164,7 @@ The application includes protected routes using custom guards:
 
 ### Admin Panel
 
-![Admin Panel](./public/img/User%20Subscription-Management.png)
+![Admin Panel](./public/img/User-Subscription-Management.png)
 
 
 
