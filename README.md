@@ -39,7 +39,7 @@ You can register a standard account and immediately upgrade your license tier us
 1. Clone the repository:
 
 ```bash
-git clone [https://github.com/eslam-cmd/ScanLens-client.git](https://github.com/eslam-cmd/ScanLens-client.git)
+git clone https://github.com/eslam-cmd/ScanLens-client.git
 cd ScanLens-client
 ```
 
@@ -166,6 +166,14 @@ The application includes protected routes using custom guards:
 
 ![Admin Panel](./public/img/User-Subscription-Management.png)
 
+
+## 📬 Contact
+
+Built by **Islam Hadaya**
+
+- Portfolio: [my-profile-personal-nextjs.vercel.app](https://my-profile-personal-nextjs.vercel.app)
+- LinkedIn: [Islam Hadaya](https://www.linkedin.com/in/Islam-hadaya)
+- Email: [hdayaaslam34@gmail.com](mailto:hdayaaslam34@gmail.com)
 
 
 **Last Updated:** September 2026
