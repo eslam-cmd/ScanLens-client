@@ -1,4 +1,4 @@
-# ScanLens - Frontend
+# ScanLens — Frontend Client
 
 A modern, responsive web application built with **Next.js** and **TypeScript** for comprehensive security scanning and vulnerability assessment. The frontend provides an intuitive interface for users to manage scans, view reports, and handle subscriptions.
 
@@ -7,24 +7,39 @@ A modern, responsive web application built with **Next.js** and **TypeScript** f
 ![TypeScript](https://img.shields.io/badge/TypeScript-5+-blue)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-4+-38B2AC)
 
-##  Backend Repository
+> 🔗 Backend repository: [ScanLens — Backend API](https://github.com/eslam-cmd/ScanLens-server)
 
-Check out the **ScanLens Backend** here:
-👉 [ScanLens - Backend](https://github.com/eslam-cmd/ScanLens-server)
+---
+
+## 🌐 Live Demo & License Keys
+
+Experience automated security audits and subscription gating live:
+
+- **Live URL:** [https://scan-lens-client.vercel.app](https://scan-lens-client.vercel.app)
+
+### 🔑 Test License Keys (Feature Gating Preview)
+You can register a standard account and immediately upgrade your license tier using the following evaluation keys to test gated features:
+
+| Plan Tier | License Key | Gated Access Unlocked |
+| :--- | :--- | :--- |
+| **Pro Tier** | `Z0XR-524R-SGWR-231A` | Extended scan limits & deep vulnerability audits |
+| **Extra Tier** | `YILU-30QR-JF8X-XDBP` | Full security engine access & AI remediation |
+
+---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
 - **Node.js** 18.17 or higher
-- **npm** package manager
+- **npm** or **yarn** package manager
 
 ### Installation
 
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/eslam-cmd/ScanLens-client
+git clone [https://github.com/eslam-cmd/ScanLens-client.git](https://github.com/eslam-cmd/ScanLens-client.git)
 cd ScanLens-client
 ```
 
