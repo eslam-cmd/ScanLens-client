@@ -1,4 +1,4 @@
-# ScanLens - Frontend
+# ScanLens — Frontend Client
 
 A modern, responsive web application built with **Next.js** and **TypeScript** for comprehensive security scanning and vulnerability assessment. The frontend provides an intuitive interface for users to manage scans, view reports, and handle subscriptions.
 
@@ -7,20 +7,41 @@ A modern, responsive web application built with **Next.js** and **TypeScript** f
 ![TypeScript](https://img.shields.io/badge/TypeScript-5+-blue)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-4+-38B2AC)
 
+> 🔗 Backend repository: [ScanLens — Backend API](https://github.com/eslam-cmd/ScanLens-server)
+
+---
+
+## 🌐 Live Demo & License Keys
+
+Experience automated security audits and subscription gating live:
+
+- **Live URL:** [https://scan-lens-client.vercel.app](https://scan-lens-client.vercel.app)
+
+### 🔑 Test License Keys (Feature Gating Preview)
+
+You can register a standard account and immediately upgrade your license tier using the following evaluation keys to test gated features:
+
+| Plan Tier      | License Key           | Gated Access Unlocked                            |
+| :------------- | :-------------------- | :----------------------------------------------- |
+| **Pro Tier**   | `Z0XR-524R-SGWR-231A` | Extended scan limits & deep vulnerability audits |
+| **Extra Tier** | `YILU-30QR-JF8X-XDBP` | Full security engine access & AI remediation     |
+
+---
+
 ## 🚀 Quick Start
 
 ### Prerequisites
 
 - **Node.js** 18.17 or higher
-- **npm** package manager
+- **npm** or **yarn** package manager
 
 ### Installation
 
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/eslam-cmd/ScanLens-client
-cd ScanLens/client
+git clone https://github.com/eslam-cmd/ScanLens-client.git
+cd ScanLens-client
 ```
 
 2. Install dependencies:
@@ -34,7 +55,7 @@ yarn install
 3. Create environment configuration (`.env.local`):
 
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:3000/api
+NEXT_PUBLIC_API_URL=http://localhost:5000/api
 ```
 
 4. Run development server:
@@ -136,7 +157,7 @@ The application includes protected routes using custom guards:
 
 ### Scan Results
 
-![Scan Results](./public/img/Website-Deep-Scan%20Page.png)
+![Scan Results](./public/img/Website-Deep-Scan-Page.png)
 
 ### AI Recommendations
 
@@ -144,12 +165,14 @@ The application includes protected routes using custom guards:
 
 ### Admin Panel
 
-![Admin Panel](./public/img/User%20Subscription%20Management.png)
+![Admin Panel](./public/img/User-Subscription-Management.png)
 
-##  Backend Repository
+## 📬 Contact
 
-Check out the **ScanLens Backend** here:
-👉 [ScanLens - Backend](https://github.com/eslam-cmd/ScanLens-server)
+Built by **Islam Hadaya**
 
+- Portfolio: [my-profile-personal-nextjs.vercel.app](https://my-profile-personal-nextjs.vercel.app)
+- LinkedIn: [Islam Hadaya](https://www.linkedin.com/in/Islam-hadaya)
+- Email: [hdayaaslam34@gmail.com](mailto:hdayaaslam34@gmail.com)
 
-**Last Updated:** August 2026
+**Last Updated:** September 2026

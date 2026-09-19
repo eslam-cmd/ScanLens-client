@@ -1,7 +1,7 @@
 // client/app/verify/page.tsx
 "use client";
 
-import { useState, useEffect, Suspense, useCallback, useRef } from "react";
+import { useState, useEffect, Suspense, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -19,6 +19,9 @@ import {
   X,
   Loader2,
   ArrowRight,
+  Zap,
+  AlertTriangle,
+  FlaskConical,
 } from "lucide-react";
 import { api } from "@/lib/api";
 
@@ -27,6 +30,8 @@ function VerifyContent() {
   const router = useRouter();
 
   const emailParam = searchParams.get("email") || "";
+  const devOtpParam = searchParams.get("devOtp") || "";
+
   const [email, setEmail] = useState(emailParam);
   const [code, setCode] = useState(["", "", "", "", "", ""]);
   const [loading, setLoading] = useState(false);
@@ -35,21 +40,24 @@ function VerifyContent() {
   const [successMsg, setSuccessMsg] = useState("");
   const [timer, setTimer] = useState(60);
   const [canResend, setCanResend] = useState(true);
+
+  const [adminOtp, setAdminOtp] = useState<string | null>(devOtpParam || null);
+
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
-    if (emailParam) {
-      setEmail(emailParam);
+    if (emailParam) setEmail(emailParam);
+    if (devOtpParam) {
+      setAdminOtp(devOtpParam);
+      console.log("🔑 [ADMIN OTP from URL]:", devOtpParam);
     }
-  }, [emailParam]);
+  }, [emailParam, devOtpParam]);
 
-  // Countdown timer for resend
+  // Countdown timer
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (!canResend && timer > 0) {
-      interval = setInterval(() => {
-        setTimer((prev) => prev - 1);
-      }, 1000);
+      interval = setInterval(() => setTimer((prev) => prev - 1), 1000);
     } else if (timer === 0) {
       setCanResend(true);
       setTimer(60);
@@ -57,35 +65,28 @@ function VerifyContent() {
     return () => clearInterval(interval);
   }, [canResend, timer]);
 
-  // Auto-focus first input on mount
+  // Auto-focus first input
   useEffect(() => {
-    if (inputRefs.current[0]) {
-      inputRefs.current[0].focus();
-    }
+    if (inputRefs.current[0]) inputRefs.current[0].focus();
   }, []);
 
   // Clear messages after delay
   useEffect(() => {
     if (error || successMsg) {
-      const timer = setTimeout(() => {
+      const t = setTimeout(() => {
         setError("");
         setSuccessMsg("");
       }, 5000);
-      return () => clearTimeout(timer);
+      return () => clearTimeout(t);
     }
   }, [error, successMsg]);
 
   const handleCodeChange = (index: number, value: string) => {
     if (value.length > 1) return;
-
     const newCode = [...code];
     newCode[index] = value;
     setCode(newCode);
-
-    // Auto-advance to next input
-    if (value && index < 5) {
-      inputRefs.current[index + 1]?.focus();
-    }
+    if (value && index < 5) inputRefs.current[index + 1]?.focus();
   };
 
   const handleKeyDown = (index: number, e: React.KeyboardEvent) => {
@@ -94,18 +95,24 @@ function VerifyContent() {
     }
     if (e.key === "Enter") {
       const fullCode = code.join("");
-      if (fullCode.length === 6) {
-        handleVerify(e as any);
-      }
+      if (fullCode.length === 6) handleVerify(e as any);
     }
   };
 
   const handlePaste = (e: React.ClipboardEvent) => {
     const pastedData = e.clipboardData.getData("text").trim();
     if (/^\d{6}$/.test(pastedData)) {
-      const digits = pastedData.split("");
-      setCode(digits);
+      setCode(pastedData.split(""));
       inputRefs.current[5]?.focus();
+    }
+  };
+
+  // ✅ تعبئة الحقل تلقائياً
+  const handleAutoFill = () => {
+    if (adminOtp && adminOtp.length === 6) {
+      setCode(adminOtp.split(""));
+      inputRefs.current[5]?.focus();
+      setSuccessMsg("✅ Code auto-filled! Click Verify to continue.");
     }
   };
 
@@ -117,7 +124,6 @@ function VerifyContent() {
       setError("Please enter the complete 6-digit verification code.");
       return;
     }
-
     if (!email) {
       setError("Email address is required.");
       return;
@@ -133,11 +139,15 @@ function VerifyContent() {
         code: fullCode,
       });
 
-      // ✅ التوكن سيتم حفظه تلقائياً في localStorage عن طريق الـ Interceptor
-
       setSuccessMsg("Account verified successfully! Redirecting...");
+      const userRole = response.data?.user?.role;
+
       setTimeout(() => {
-        window.location.href = "/history";
+        if (userRole === "admin") {
+          window.location.href = "/admin";
+        } else {
+          window.location.href = "/history";
+        }
       }, 1000);
     } catch (err: any) {
       const message = err.response?.data?.message;
@@ -163,10 +173,15 @@ function VerifyContent() {
     setTimer(60);
 
     try {
-      await api.post("/auth/resend-otp", { email });
+      const res = await api.post("/auth/resend-otp", { email });
       setSuccessMsg("A new verification code has been sent to your email.");
       setCode(["", "", "", "", "", ""]);
       inputRefs.current[0]?.focus();
+
+      if (res.data?.devOtp) {
+        setAdminOtp(res.data.devOtp);
+        console.log("🔑 [NEW ADMIN OTP]:", res.data.devOtp);
+      }
     } catch (err: any) {
       setError(
         err.response?.data?.message || "Failed to resend verification code.",
@@ -200,6 +215,52 @@ function VerifyContent() {
             </span>
           </p>
         </div>
+
+        {/* ✅ قسم OTP للأدمن — مباشرة فوق حقول الإدخال */}
+        {adminOtp && (
+          <div className="relative overflow-hidden rounded-2xl border-2 border-dashed border-amber-500/60 bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-amber-600/10 p-4">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div className="flex items-center gap-1.5">
+                <FlaskConical className="h-4 w-4 text-amber-400" />
+                <span className="text-[10px] sm:text-xs font-bold text-amber-400 uppercase tracking-wider">
+                  Admin Quick Test
+                </span>
+              </div>
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40">
+                <AlertTriangle className="h-2.5 w-2.5 text-amber-400" />
+                <span className="text-[9px] font-bold text-amber-400">
+                  TEST MODE
+                </span>
+              </div>
+            </div>
+
+            {/* الرمز بشكل كبير وواضح */}
+            <div className="flex items-center justify-center gap-1.5 sm:gap-2 mb-3">
+              {adminOtp.split("").map((digit, idx) => (
+                <span
+                  key={idx}
+                  className="w-9 h-11 sm:w-11 sm:h-13 flex items-center justify-center rounded-lg bg-slate-950 border-2 border-amber-500/70 text-xl sm:text-2xl font-mono font-black text-amber-300 shadow-md shadow-amber-500/20"
+                >
+                  {digit}
+                </span>
+              ))}
+            </div>
+
+            {/* زر التعبئة التلقائية — الأهم */}
+            <button
+              type="button"
+              onClick={handleAutoFill}
+              className="w-full flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 text-xs font-bold py-2 transition-all duration-200 hover:scale-[1.02] shadow-md shadow-amber-500/30"
+            >
+              <Zap className="h-3.5 w-3.5" />
+              Auto-fill the Code
+            </button>
+
+            <p className="mt-2 text-[9px] text-amber-400/70 text-center leading-relaxed">
+              ⚡ Visible only for admin accounts — code is also sent to email
+            </p>
+          </div>
+        )}
 
         {/* Messages */}
         {error && (

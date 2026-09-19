@@ -32,6 +32,7 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [touched, setTouched] = useState({ email: false, password: false });
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
   const router = useRouter();
 
   const checkAuth = async () => {
@@ -68,9 +69,12 @@ export default function LoginPage() {
   const canSubmit =
     email && password && isEmailValid && isPasswordValid && !loading;
 
-  // client/app/login/page.tsx
-
-  // client/app/login/page.tsx
+  // ✅ تعبئة بيانات الأدمن للتجربة
+  const handleFillAdminCredentials = () => {
+    setEmail("hdayaaslam34@gmail.com");
+    setPassword("123456");
+    setTouched({ email: true, password: true });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,22 +89,26 @@ export default function LoginPage() {
 
       // ✅ حالة 1: الحساب غير مفعّل (يطلب OTP)
       if (res.data?.requiresVerification === true) {
-        setSuccessMsg("Account requires verification. Redirecting to OTP page...");
+        setSuccessMsg(
+          "Account requires verification. Redirecting to OTP page...",
+        );
+
         setTimeout(() => {
-          router.push(`/verify?email=${encodeURIComponent(res.data.email || email)}`);
+          // ✅ تمرير devOtp في الرابط إذا وُجد
+          const verifyUrl = res.data?.devOtp
+            ? `/verify?email=${encodeURIComponent(res.data.email || email)}&devOtp=${res.data.devOtp}`
+            : `/verify?email=${encodeURIComponent(res.data.email || email)}`;
+
+          console.log("🚀 [REDIRECT URL]:", verifyUrl);
+          router.push(verifyUrl);
         }, 1200);
         return;
       }
 
-      // ✅ حالة 2: تسجيل الدخول ناجح (يوجد accessToken)
+      // ✅ حالة 2: تسجيل الدخول ناجح
       if (res.data?.accessToken) {
         setSuccessMsg("Signed in successfully! Redirecting...");
-
-        // ✅ تخزين التوكن في localStorage (اختياري)
-        // localStorage.setItem('accessToken', res.data.accessToken);
-
         setTimeout(() => {
-          // ✅ توجيه حسب الدور
           if (res.data.user?.role === "admin") {
             router.push("/admin");
           } else {
@@ -110,7 +118,7 @@ export default function LoginPage() {
         return;
       }
 
-      // ✅ حالة 3: رسالة نجاح فقط (بدون accessToken)
+      // ✅ حالة 3: رسالة نجاح فقط
       if (res.data?.message) {
         setSuccessMsg(res.data.message);
         setTimeout(() => {
@@ -118,19 +126,19 @@ export default function LoginPage() {
         }, 1000);
         return;
       }
-
     } catch (err: any) {
       console.error("❌ Login error:", err);
       const message = err.response?.data?.message;
       setError(
         Array.isArray(message)
           ? message.join(", ")
-          : message || "Invalid email or password"
+          : message || "Invalid email or password",
       );
     } finally {
       setLoading(false);
     }
   };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && canSubmit) {
       handleSubmit(e as any);
@@ -277,7 +285,7 @@ export default function LoginPage() {
                       ? "border-emerald-500 focus:border-emerald-500 ring-1 ring-emerald-500/30"
                       : "border-slate-800 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/30"
                 }`}
-              />
+              ></input>
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
@@ -341,6 +349,42 @@ export default function LoginPage() {
             )}
           </button>
         </form>
+
+        {/* ✅ Admin Test Account — فقرة صغيرة أنيقة */}
+        <div className="relative overflow-hidden rounded-xl border border-sky-500/30 bg-gradient-to-br from-sky-500/10 via-cyan-500/5 to-sky-600/10 p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles className="h-3.5 w-3.5 text-sky-400" />
+            <span className="text-[11px] font-bold text-sky-300 uppercase tracking-wider">
+              Admin Test Account
+            </span>
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2 text-[11px] font-mono">
+              <Mail className="h-3 w-3 text-sky-400 shrink-0" />
+              <span className="text-slate-300 truncate">
+                hdayaaslam34@gmail.com
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-[11px] font-mono">
+              <Lock className="h-3 w-3 text-sky-400 shrink-0" />
+              <span className="text-slate-300 tracking-widest">123456</span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleFillAdminCredentials}
+            className="mt-2.5 w-full flex items-center justify-center gap-1.5 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 text-sky-300 text-[11px] font-semibold py-1.5 transition-all duration-200 hover:scale-[1.02]"
+          >
+            <Sparkles className="h-3 w-3" />
+            Auto-fill Credentials
+          </button>
+
+          <p className="mt-2 text-[9px] text-sky-400/60 text-center">
+            ⚡ For testing purposes only
+          </p>
+        </div>
 
         {/* Divider */}
         <div className="relative">

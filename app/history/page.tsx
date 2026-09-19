@@ -38,7 +38,6 @@ import {
 import { api } from "@/lib/api";
 import ScanDetailModal from "./ScanDetailModal";
 
-// ✅ استيراد من الملف المركزي للخطط
 import {
   PlanType,
   PLAN_FEATURES,
@@ -54,7 +53,6 @@ import {
   isPaidPlan,
 } from "@/lib/plans.config";
 
-// ✅ استيراد UpgradeModal
 import UpgradeModal from "@/components/layout/UpgradeModal";
 
 interface ScanRecord {
@@ -395,7 +393,7 @@ function ScanRowDesktop({
   const scanAge = Math.floor(
     (Date.now() - new Date(scan.createdAt).getTime()) / (1000 * 60 * 60 * 24),
   );
-  const isExpired = scanAge > retentionDays;
+  const isExpired = retentionDays !== Infinity && scanAge > retentionDays;
 
   return (
     <tr
@@ -522,7 +520,7 @@ function ScanCardMobile({
   const scanAge = Math.floor(
     (Date.now() - new Date(scan.createdAt).getTime()) / (1000 * 60 * 60 * 24),
   );
-  const isExpired = scanAge > retentionDays;
+  const isExpired = retentionDays !== Infinity && scanAge > retentionDays;
 
   return (
     <div
@@ -610,7 +608,6 @@ function ScanCardMobile({
 // 📄 MAIN COMPONENT: HistoryPage
 // ============================================================
 export default function HistoryPage() {
-  // State
   const [scans, setScans] = useState<ScanRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [exportingCsv, setExportingCsv] = useState(false);
@@ -618,17 +615,16 @@ export default function HistoryPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
-  // User & Plan State
   const [user, setUser] = useState<any>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userPlan, setUserPlan] = useState<PlanType>("free");
   const [userRole, setUserRole] = useState<string>("user");
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
-  // ✅ retentionDays كـ State منفصل
-  const [retentionDays, setRetentionDays] = useState<number>(7);
+  const [retentionDays, setRetentionDays] = useState<number | typeof Infinity>(
+    7,
+  );
 
-  // ✅ حالة الاشتراك والعداد
   const [subscription, setSubscription] = useState<{
     expiresAt: string | null;
     isExpiring: boolean;
@@ -642,7 +638,6 @@ export default function HistoryPage() {
   } | null>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
-  // Filters & Search
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<
     "newest" | "oldest" | "highest" | "lowest"
@@ -652,7 +647,6 @@ export default function HistoryPage() {
   >("all");
   const [scoreRange, setScoreRange] = useState<[number, number]>([0, 100]);
 
-  // UI State
   const [selectedScan, setSelectedScan] = useState<ScanRecord | null>(null);
   const [confirmDeleteScan, setConfirmDeleteScan] = useState<ScanRecord | null>(
     null,
@@ -662,17 +656,19 @@ export default function HistoryPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  // ✅ Storage Stats State
+  // ✅ Storage Stats State (محدث مع maxStoredScans)
   const [storageStats, setStorageStats] = useState<{
     totalScans: number;
     expiredScans: number;
     retentionDays: number | typeof Infinity;
     isPermanent: boolean;
+    maxStoredScans?: number | typeof Infinity;
+    atStorageLimit?: boolean;
   } | null>(null);
   const [cleaning, setCleaning] = useState(false);
   const [showStorageInfo, setShowStorageInfo] = useState(true);
 
-  // ✅ جلب بيانات المستخدم والخطة
+  // ✅ جلب بيانات المستخدم
   useEffect(() => {
     const checkAuth = async () => {
       try {
@@ -684,7 +680,6 @@ export default function HistoryPage() {
           setUserPlan(userData.plan || "free");
           setUserRole(userData.role || "user");
 
-          // ✅ تعيين retentionDays باستخدام الدالة من الملف المركزي
           if (userData.role === "admin") {
             setRetentionDays(Infinity);
           } else {
@@ -692,7 +687,6 @@ export default function HistoryPage() {
             setRetentionDays(retention);
           }
 
-          // ✅ جلب معلومات الاشتراك
           if (userData.subscription) {
             const expiresAt = userData.subscription.expiresAt;
             if (expiresAt) {
@@ -755,7 +749,7 @@ export default function HistoryPage() {
     return () => clearInterval(interval);
   }, [subscription?.expiresAt]);
 
-  // ✅ الحصول على ميزات الخطة من الملف المركزي
+  // ✅ planFeatures
   const planFeatures = useMemo(() => {
     if (userRole === "admin") {
       return {
@@ -764,6 +758,7 @@ export default function HistoryPage() {
         color: "text-amber-400",
         borderColor: "border-amber-500/30",
         maxScans: Infinity,
+        maxStoredScans: Infinity,
         exportReports: true,
         aiFixes: true,
         deepScan: true,
@@ -779,6 +774,7 @@ export default function HistoryPage() {
       color: features.color,
       borderColor: features.borderColor,
       maxScans: features.maxScans,
+      maxStoredScans: features.maxStoredScans,
       exportReports: features.exportReports,
       aiFixes: features.aiFixes,
       deepScan: features.deepScan,
@@ -787,11 +783,9 @@ export default function HistoryPage() {
     };
   }, [userPlan, userRole]);
 
-  // ✅ استخراج القيم
   const canExport = planFeatures.exportReports;
   const canDelete = planFeatures.canDelete;
 
-  // ✅ التحقق من صلاحية التصدير
   const checkExportPermission = useCallback(() => {
     if (!canExport) {
       setActionErrorModal(
@@ -802,7 +796,6 @@ export default function HistoryPage() {
     return true;
   }, [canExport]);
 
-  // ✅ التحقق من صلاحية الحذف
   const checkDeletePermission = useCallback(() => {
     if (!canDelete) {
       setActionErrorModal(
@@ -840,7 +833,7 @@ export default function HistoryPage() {
     }
   }, [isLoggedIn]);
 
-  // ✅ تنظيف الفحوصات المنتهية يدوياً
+  // ✅ تنظيف يدوي
   const handleManualCleanup = useCallback(async () => {
     if (!isLoggedIn) return;
 
@@ -850,11 +843,9 @@ export default function HistoryPage() {
         withCredentials: true,
       });
 
-      // ✅ تحديث البيانات
       await fetchHistory();
       await fetchStorageStats();
 
-      // ✅ عرض رسالة نجاح
       const deletedCount = res.data?.deleted || 0;
       if (deletedCount > 0) {
         setActionErrorModal(
@@ -874,7 +865,7 @@ export default function HistoryPage() {
     }
   }, [isLoggedIn, fetchHistory, fetchStorageStats]);
 
-  // ✅ تنظيف شامل (للمدير فقط)
+  // ✅ تنظيف شامل (للمدير)
   const handleAdminCleanup = useCallback(async () => {
     if (userRole !== "admin") return;
 
@@ -918,14 +909,12 @@ export default function HistoryPage() {
   const filteredScans = useMemo(() => {
     let result = [...scans];
 
-    // ✅ فلترة حسب صلاحية التخزين - باستخدام retentionDays
     if (retentionDays !== Infinity) {
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
       result = result.filter((scan) => new Date(scan.createdAt) >= cutoffDate);
     }
 
-    // Search
     if (searchQuery) {
       result = result.filter((scan) => {
         const domain = scan.website?.domain || scan.website?.url || "";
@@ -933,7 +922,6 @@ export default function HistoryPage() {
       });
     }
 
-    // Status Filter
     if (statusFilter !== "all") {
       result = result.filter((scan) => {
         if (statusFilter === "passed") return scan.score >= 80;
@@ -944,12 +932,10 @@ export default function HistoryPage() {
       });
     }
 
-    // Score Range
     result = result.filter(
       (scan) => scan.score >= scoreRange[0] && scan.score <= scoreRange[1],
     );
 
-    // Sort
     result.sort((a, b) => {
       switch (sortOrder) {
         case "newest":
@@ -972,14 +958,12 @@ export default function HistoryPage() {
     return result;
   }, [scans, searchQuery, statusFilter, scoreRange, sortOrder, retentionDays]);
 
-  // Pagination
   const totalPages = Math.ceil(filteredScans.length / itemsPerPage);
   const paginatedScans = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
     return filteredScans.slice(start, start + itemsPerPage);
   }, [filteredScans, currentPage]);
 
-  // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, statusFilter, scoreRange, sortOrder]);
@@ -1057,6 +1041,7 @@ export default function HistoryPage() {
       await api.delete(`/scans/${scanId}`);
       setScans((prev) => prev.filter((scan) => scan.id !== scanId));
       setConfirmDeleteScan(null);
+      fetchStorageStats();
     } catch (err: any) {
       setActionErrorModal(
         err.response?.data?.message || "Failed to delete scan record.",
@@ -1066,7 +1051,7 @@ export default function HistoryPage() {
     }
   };
 
-  // ✅ عرض تحذير انتهاء الاشتراك
+  // ✅ Subscription Warning
   const renderSubscriptionWarning = () => {
     if (!isLoggedIn || userRole === "admin") return null;
     if (!subscription?.isExpiring || !subscription?.expiresAt) return null;
@@ -1177,7 +1162,7 @@ export default function HistoryPage() {
     );
   };
 
-  // ✅ عرض معلومات الخطة
+  // ✅ Plan Banner
   const renderPlanBanner = () => {
     if (!isLoggedIn) {
       return (
@@ -1259,17 +1244,36 @@ export default function HistoryPage() {
     );
   };
 
-  // ✅ عرض معلومات التخزين
+  // ✅ Storage Info (مع maxStoredScans)
   const renderStorageInfo = () => {
     if (!isLoggedIn || !storageStats) return null;
     if (!showStorageInfo) return null;
 
-    const { totalScans, expiredScans, retentionDays, isPermanent } =
-      storageStats;
+    const {
+      totalScans,
+      expiredScans,
+      retentionDays: statsRetentionDays,
+      isPermanent,
+      maxStoredScans,
+      atStorageLimit,
+    } = storageStats;
 
     if (totalScans === 0) return null;
 
-    const retentionText = isPermanent ? "Permanent" : `${retentionDays} days`;
+    const retentionText = isPermanent
+      ? "Permanent"
+      : `${statsRetentionDays} days`;
+
+    const maxStoredText =
+      maxStoredScans === Infinity || maxStoredScans === undefined
+        ? "∞"
+        : String(maxStoredScans);
+
+    const isAtLimit = atStorageLimit === true;
+    const storagePercent =
+      maxStoredScans && maxStoredScans !== Infinity
+        ? Math.min(100, (totalScans / maxStoredScans) * 100)
+        : 0;
 
     return (
       <div className="p-4 rounded-2xl bg-slate-900/50 border border-slate-800">
@@ -1290,11 +1294,21 @@ export default function HistoryPage() {
                     ⏳ {retentionText}
                   </span>
                 )}
+                {isAtLimit && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30 animate-pulse">
+                    ⚠️ At Limit
+                  </span>
+                )}
               </p>
+
               <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-slate-400">
                 <span>
-                  Total Scans:{" "}
-                  <strong className="text-white">{totalScans}</strong>
+                  Storage:{" "}
+                  <strong
+                    className={isAtLimit ? "text-rose-400" : "text-emerald-400"}
+                  >
+                    {totalScans} / {maxStoredText}
+                  </strong>
                 </span>
                 <span className="text-slate-600">•</span>
                 <span>
@@ -1306,21 +1320,43 @@ export default function HistoryPage() {
                     <span className="text-slate-600">•</span>
                     <span className="text-amber-400 flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
-                      {expiredScans} scan{expiredScans > 1 ? "s" : ""} will be
-                      deleted
+                      {expiredScans} expired
                     </span>
                   </>
                 )}
-                {!isPermanent && expiredScans === 0 && totalScans > 0 && (
+                {isAtLimit && (
                   <>
                     <span className="text-slate-600">•</span>
-                    <span className="text-emerald-400 flex items-center gap-1">
-                      <CheckCircle2 className="h-3 w-3" />
-                      All scans are valid
+                    <span className="text-rose-400 flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3" />
+                      Oldest scan will be deleted on next save
                     </span>
                   </>
                 )}
               </div>
+
+              {/* ✅ شريط تقدم التخزين */}
+              {maxStoredScans !== Infinity &&
+                maxStoredScans !== undefined &&
+                maxStoredScans > 0 && (
+                  <div className="mt-2 w-full sm:w-64">
+                    <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                      <div
+                        className={`h-full transition-all duration-500 ${
+                          isAtLimit
+                            ? "bg-gradient-to-r from-rose-500 to-rose-400"
+                            : storagePercent >= 80
+                              ? "bg-gradient-to-r from-amber-500 to-amber-400"
+                              : "bg-gradient-to-r from-emerald-500 to-emerald-400"
+                        }`}
+                        style={{ width: `${storagePercent}%` }}
+                      />
+                    </div>
+                    <p className="text-[9px] text-slate-500 mt-1">
+                      {storagePercent.toFixed(1)}% of storage used
+                    </p>
+                  </div>
+                )}
             </div>
           </div>
 
@@ -1364,14 +1400,16 @@ export default function HistoryPage() {
           </div>
         </div>
 
-        {/* ✅ عداد تنازلي لوقت الحذف التلقائي */}
-        {!isPermanent && expiredScans > 0 && (
+        {/* ✅ Auto-cleanup note */}
+        {!isPermanent && (
           <div className="mt-3 pt-3 border-t border-slate-800/50">
             <div className="flex items-center gap-2 text-[10px] text-slate-500">
               <Timer className="h-3 w-3" />
               <span>
                 Scans older than{" "}
-                <strong className="text-slate-400">{retentionDays} days</strong>{" "}
+                <strong className="text-slate-400">
+                  {statsRetentionDays} days
+                </strong>{" "}
                 are automatically deleted at midnight
               </span>
               <span className="text-emerald-400 ml-auto flex items-center gap-1">
@@ -1404,13 +1442,8 @@ export default function HistoryPage() {
       className="container mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-10 max-w-7xl space-y-6 sm:space-y-8"
       dir="ltr"
     >
-      {/* ✅ عرض معلومات التخزين */}
       {renderStorageInfo()}
-
-      {/* ✅ تحذير انتهاء الاشتراك */}
       {renderSubscriptionWarning()}
-
-      {/* ✅ Plan Banner */}
       {renderPlanBanner()}
 
       {/* Header */}
@@ -1605,7 +1638,9 @@ export default function HistoryPage() {
                       index={index}
                       canDelete={canDelete}
                       canExport={canExport}
-                      retentionDays={retentionDays}
+                      retentionDays={
+                        retentionDays === Infinity ? 999999 : retentionDays
+                      }
                     />
                   ))}
                 </tbody>
@@ -1625,7 +1660,9 @@ export default function HistoryPage() {
                 deletingId={deletingId}
                 canDelete={canDelete}
                 canExport={canExport}
-                retentionDays={retentionDays}
+                retentionDays={
+                  retentionDays === Infinity ? 999999 : retentionDays
+                }
               />
             ))}
           </div>
@@ -1762,7 +1799,6 @@ export default function HistoryPage() {
         setScoreRange={setScoreRange}
       />
 
-      {/* ✅ Upgrade Modal */}
       <UpgradeModal
         isOpen={showUpgradeModal}
         onClose={() => setShowUpgradeModal(false)}
@@ -1773,11 +1809,11 @@ export default function HistoryPage() {
           setUser({ ...user, plan });
           setSubscription(null);
           setTimeLeft(null);
-          // ✅ تحديث retentionDays للخطة الجديدة
           if (userRole !== "admin") {
             const retention = getHistoryRetention(plan);
             setRetentionDays(retention);
           }
+          fetchStorageStats();
         }}
       />
     </div>

@@ -155,7 +155,7 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
   const [exporting, setExporting] = useState<"csv" | "pdf" | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
-  // ✅ Guest scan state - تتجدد يومياً
+  // ✅ Guest scan state
   const [guestScanData, setGuestScanData] = useState(() => getGuestScanData());
   const guestScanCount = guestScanData.count;
   const [limitResetAt, setLimitResetAt] = useState<number>(() =>
@@ -173,6 +173,15 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
       seconds: totalSeconds % 60,
     };
   });
+
+  // ✅ حالة نافذة الاستخدام (تُملأ من الـ API)
+  const [usageWindow, setUsageWindow] = useState<{
+    windowEnd: number | null;
+    scansToday: number;
+    remainingScans: number | null;
+    deepScansToday: number;
+    remainingDeepScans: number | null;
+  } | null>(null);
 
   const setGuestScanCount = (count: number) => {
     const newData = { ...guestScanData, count };
@@ -223,25 +232,42 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
     }
   }, [isLoggedIn]);
 
-  // ✅ حساب عدد الفحوصات التي تمت اليوم فقط
-  const getTodayScansUsed = useCallback(() => {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+  // ✅ جلب نافذة الاستخدام
+  const fetchUsageWindow = useCallback(async () => {
+    if (!isLoggedIn) return;
+    try {
+      const res = await api.get("/scans/usage-window", {
+        withCredentials: true,
+      });
+      if (res.data?.windowEnd) {
+        setUsageWindow({
+          windowEnd: new Date(res.data.windowEnd).getTime(),
+          scansToday: res.data.scansToday || 0,
+          remainingScans: res.data.remainingScans ?? null,
+          deepScansToday: res.data.deepScansToday || 0,
+          remainingDeepScans: res.data.remainingDeepScans ?? null,
+        });
+        setLimitResetAt(new Date(res.data.windowEnd).getTime());
+      }
+    } catch (err) {
+      console.error("Failed to fetch usage window:", err);
+    }
+  }, [isLoggedIn]);
 
-    return (
-      scanHistory?.filter((item) => {
-        const createdAt = new Date(item?.createdAt || item?.completedAt || 0);
-        return createdAt >= todayStart;
-      }).length || 0
-    );
-  }, [scanHistory]);
+  // ✅ حساب عدد الفحوصات المستخدمة — يعتمد على usageWindow فقط
+  const getTodayScansUsed = useCallback(() => {
+    if (isLoggedIn && usageWindow) {
+      return usageWindow.scansToday;
+    }
+    return 0;
+  }, [isLoggedIn, usageWindow]);
 
   // ✅ تعريف getScanLimitStatus
   const getScanLimitStatus = useCallback(() => {
     if (isLoggedIn) {
       const maxScans = getMaxScans(userPlan);
-      const scansUsed = getTodayScansUsed();
 
+      // ✅ Unlimited
       if (maxScans === Infinity) {
         return {
           isLimitReached: false,
@@ -250,7 +276,9 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
         };
       }
 
-      const remaining = Math.max(0, (maxScans as number) - scansUsed);
+      const maxScansNum = typeof maxScans === "number" ? maxScans : 0;
+      const scansUsed = usageWindow?.scansToday ?? 0;
+      const remaining = Math.max(0, maxScansNum - scansUsed);
       const isLimitReached = remaining <= 0;
 
       return {
@@ -272,7 +300,13 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
         ? "⚠️ Daily free scan limit reached"
         : `${remaining} free scans remaining today`,
     };
-  }, [isLoggedIn, userPlan, userPlanFeatures, scanHistory, guestScanCount]);
+  }, [
+    isLoggedIn,
+    userPlan,
+    userPlanFeatures,
+    usageWindow,
+    guestScanCount,
+  ]);
 
   // ✅ استخدم fetchScanHistory في useEffect
   useEffect(() => {
@@ -280,6 +314,13 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
       fetchScanHistory();
     }
   }, [isLoggedIn, fetchScanHistory]);
+
+  // ✅ جلب نافذة الاستخدام عند تسجيل الدخول
+  useEffect(() => {
+    if (isLoggedIn) {
+      fetchUsageWindow();
+    }
+  }, [isLoggedIn, fetchUsageWindow]);
 
   // ✅ التحقق من صلاحية المستخدم
   useEffect(() => {
@@ -353,18 +394,23 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
     return () => clearInterval(interval);
   }, [subscription?.expiresAt]);
 
-  // ✅ تحديث عداد إعادة المحاولات اليومية في الوقت الحقيقي
+  // ✅ تعيين limitResetAt من usageWindow
   useEffect(() => {
     if (!isLoggedIn) {
+      // ✅ للزوار: منتصف الليل
       setLimitResetAt(
         guestScanData.resetAt || getNextResetTimestamp(new Date()),
       );
       return;
     }
 
-    setLimitResetAt(getNextResetTimestamp(new Date()));
-  }, [isLoggedIn, guestScanData.resetAt]);
+    // ✅ للمسجلين: استخدم windowEnd من الـ API
+    if (usageWindow?.windowEnd) {
+      setLimitResetAt(usageWindow.windowEnd);
+    }
+  }, [isLoggedIn, guestScanData.resetAt, usageWindow?.windowEnd]);
 
+  // ✅ عداد تنازلي للنافذة
   useEffect(() => {
     const updateResetCountdown = () => {
       const now = Date.now();
@@ -379,11 +425,13 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
 
       if (remaining <= 0) {
         if (isLoggedIn) {
-          setLimitResetAt(getNextResetTimestamp(new Date()));
+          // ✅ عند انتهاء النافذة، أعد جلبها من الـ API
+          fetchUsageWindow();
           fetchScanHistory();
           return;
         }
 
+        // ✅ للزوار
         const resetData = buildGuestScanData(0, new Date());
         setGuestScanData(resetData);
         saveGuestScanData(0);
@@ -395,7 +443,7 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
 
     const interval = setInterval(updateResetCountdown, 1000);
     return () => clearInterval(interval);
-  }, [limitResetAt, isLoggedIn, fetchScanHistory]);
+  }, [limitResetAt, isLoggedIn, fetchUsageWindow, fetchScanHistory]);
 
   // Auto-scan on load if URL is provided
   useEffect(() => {
@@ -425,7 +473,7 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
     [isLoggedIn, userPlanFeatures],
   );
 
-  // ✅ fetchScan باستخدام Direct Scan (بدون Queue)
+  // ✅ fetchScan
   const fetchScan = useCallback(
     async (urlToScan: string) => {
       if (!urlToScan) return;
@@ -459,7 +507,7 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
       setError("");
 
       try {
-        // ✅ استخدام direct-scan بدلاً من queue
+        // ✅ استخدام direct-scan
         const res = await api.post("/scans/direct-scan", {
           url: formattedUrl,
           deepScan: isDeepScan,
@@ -469,10 +517,31 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
         setScanResult(res.data);
         setLoading(false);
 
+        // ✅ تحديث نافذة الاستخدام من استجابة الفحص
+        if (res.data?.dailyUsage) {
+          const daily = res.data.dailyUsage;
+
+          setUsageWindow((prev) => ({
+            windowEnd: daily.windowEnd
+              ? new Date(daily.windowEnd).getTime()
+              : (prev?.windowEnd ?? Date.now() + 24 * 60 * 60 * 1000),
+            scansToday: daily.scansToday ?? (prev?.scansToday ?? 0),
+            remainingScans: daily.remainingScans ?? null,
+            deepScansToday: daily.deepScansToday ?? (prev?.deepScansToday ?? 0),
+            remainingDeepScans: daily.remainingDeepScans ?? null,
+          }));
+
+          if (daily.windowEnd) {
+            setLimitResetAt(new Date(daily.windowEnd).getTime());
+          }
+        }
+
         if (!isLoggedIn) {
           setGuestScanCount(guestScanCount + 1);
         } else {
-          fetchScanHistory();
+          // ✅ جلب التاريخ + نافذة الاستخدام المحدثة
+          await fetchScanHistory();
+          await fetchUsageWindow();
         }
       } catch (err: any) {
         console.error("❌ Scan error:", err);
@@ -501,6 +570,7 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
       canPerformScan,
       guestScanCount,
       fetchScanHistory,
+      fetchUsageWindow,
       setGuestScanCount,
     ],
   );
@@ -723,7 +793,7 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
               <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-900/50 px-4 py-2 rounded-lg">
                 <Clock className="h-4 w-4 text-amber-400" />
                 <span>
-                  Limit resets in{" "}
+                  Renews in{" "}
                   {`${String(resetCountdown.hours).padStart(2, "0")}:${String(
                     resetCountdown.minutes,
                   ).padStart(
@@ -801,7 +871,7 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
             <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-900/50 px-4 py-2 rounded-lg">
               <RefreshCw className="h-4 w-4 text-amber-400 animate-spin-slow" />
               <span>
-                Resets in{" "}
+                Renews in{" "}
                 {`${String(resetCountdown.hours).padStart(2, "0")}:${String(
                   resetCountdown.minutes,
                 ).padStart(
@@ -1075,9 +1145,9 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
   const renderScanLimitInfo = () => {
     if (isLoggedIn) {
       const maxScans = getMaxScans(userPlan);
-      const maxScansNum = typeof maxScans === "number" ? maxScans : 0;
 
-      if (maxScansNum === Infinity) {
+      // ✅ Unlimited
+      if (maxScans === Infinity) {
         return (
           <span className="flex items-center gap-1 text-purple-400">
             <InfinityIcon className="h-3 w-3" />
@@ -1086,14 +1156,15 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
         );
       }
 
-      const scansUsed = getTodayScansUsed();
+      const maxScansNum = typeof maxScans === "number" ? maxScans : 0;
+      const scansUsed = usageWindow?.scansToday ?? 0;
       const remaining = Math.max(0, maxScansNum - scansUsed);
 
       return (
         <span className="text-xs text-slate-400">
-          {remaining} / {maxScansNum} scans remaining today
+          {remaining} / {maxScansNum} scans remaining
           <span className="ml-2 text-amber-300">
-            • resets in{" "}
+            • renews in{" "}
             {`${String(resetCountdown.hours).padStart(2, "0")}:${String(
               resetCountdown.minutes,
             ).padStart(
@@ -2422,6 +2493,7 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
           setUser({ ...user, plan });
           setSubscription(null);
           setTimeLeft(null);
+          fetchUsageWindow();
         }}
       />
     </div>

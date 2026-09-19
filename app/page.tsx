@@ -86,6 +86,15 @@ const PLAN_CONFIG = {
   },
 };
 
+const PARTICLE_CONFIG = Array.from({ length: 20 }, (_, index) => ({
+  left: ((index * 13.7 + 7.4) % 100).toFixed(2) + "%",
+  top: ((index * 17.3 + 9.1) % 100).toFixed(2) + "%",
+  animationDuration: `${10 + ((index * 7) % 20)}s`,
+  animationDelay: `${(index * 2.8) % 10}s`,
+  width: `${2 + ((index * 3.1) % 3)}px`,
+  height: `${2 + ((index * 4.2) % 3)}px`,
+}));
+
 export default function HomePage() {
   const [url, setUrl] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -616,17 +625,17 @@ export default function HomePage() {
 
       {/* Floating Particles */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
-        {[...Array(20)].map((_, i) => (
+        {PARTICLE_CONFIG.map((particle, i) => (
           <div
             key={i}
             className="absolute w-1 h-1 bg-sky-400/20 rounded-full animate-float"
             style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              animationDuration: `${10 + Math.random() * 20}s`,
-              animationDelay: `${Math.random() * 10}s`,
-              width: `${2 + Math.random() * 3}px`,
-              height: `${2 + Math.random() * 3}px`,
+              left: particle.left,
+              top: particle.top,
+              animationDuration: particle.animationDuration,
+              animationDelay: particle.animationDelay,
+              width: particle.width,
+              height: particle.height,
             }}
           />
         ))}

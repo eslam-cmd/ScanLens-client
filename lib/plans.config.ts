@@ -36,6 +36,9 @@ export type PlanType = "free" | "pro" | "extra";
 export type UserRole = "user" | "admin";
 export type BillingCycle = "monthly" | "yearly";
 
+// ✅ نوع يسمح بـ Infinity
+export type UnlimitedNumber = number | typeof Infinity;
+
 // ============================================================
 // ✅ واجهات (Interfaces)
 // ============================================================
@@ -48,14 +51,15 @@ export interface PlanFeatures {
   bgColor: string;
   badge: string;
   badgeColor: string;
-  historyRetention: number;
-  maxScans: number;
+  historyRetention: UnlimitedNumber; // ✅ يسمح بـ Infinity
+  maxScans: UnlimitedNumber; // ✅ يسمح بـ Infinity
+  maxStoredScans: UnlimitedNumber; // ✅ جديد
   exportReports: boolean;
   aiFixes: boolean;
   deepScan: boolean;
   prioritySupport: boolean;
-  maxWebsites: number;
-  teamMembers: number;
+  maxWebsites: UnlimitedNumber; // ✅ يسمح بـ Infinity
+  teamMembers: UnlimitedNumber; // ✅ يسمح بـ Infinity
   apiAccess: boolean;
   customRules: boolean;
   auditLogs: boolean;
@@ -63,19 +67,20 @@ export interface PlanFeatures {
 }
 
 export interface PlanLimits {
-  scansPerDay: number | string;
-  concurrentScans: number | string;
+  scansPerDay: UnlimitedNumber;
+  concurrentScans: UnlimitedNumber;
   historyRetention: string;
-  deepScanLimit: number | string;   // ✅ جديد
-  unlimitedScans: boolean;          // ✅ جديد
+  deepScanLimit: UnlimitedNumber;
+  maxStoredScans: UnlimitedNumber; // ✅ جديد
+  unlimitedScans: boolean;
   aiFixes: boolean;
   exportReports: boolean;
   deepScan: boolean;
   prioritySupport: boolean;
   customRules: boolean;
-  teamMembers: number | string;
+  teamMembers: UnlimitedNumber;
   apiAccess: boolean;
-  maxWebsites: number | string;
+  maxWebsites: UnlimitedNumber;
   scanTimeout: number;
   advancedAnalytics: boolean;
   customReports: boolean;
@@ -102,7 +107,7 @@ export interface Plan {
 }
 
 // ============================================================
-// ✅ ميزات الخطط الأساسية
+// ✅ ميزات الخطط الأساسية (موحّدة مع server)
 // ============================================================
 
 export const PLAN_FEATURES: Record<PlanType, PlanFeatures> = {
@@ -114,8 +119,9 @@ export const PLAN_FEATURES: Record<PlanType, PlanFeatures> = {
     bgColor: "bg-slate-900/50",
     badge: "Starter",
     badgeColor: "text-slate-400 bg-slate-800/50",
-    historyRetention: 7,
-    maxScans: 5,
+    historyRetention: 7, // ✅ 7 أيام
+    maxScans: 10, // ✅ موحّد مع server (10)
+    maxStoredScans: 50, // ✅ 50 فحص مخزن
     exportReports: true,
     aiFixes: false,
     deepScan: true,
@@ -135,8 +141,9 @@ export const PLAN_FEATURES: Record<PlanType, PlanFeatures> = {
     bgColor: "bg-sky-950/30",
     badge: "Professional",
     badgeColor: "text-sky-400 bg-sky-500/20",
-    historyRetention: 90,
-    maxScans: 50,                    // ✅ 50 فحص يومياً
+    historyRetention: 90, // ✅ 90 يوم
+    maxScans: 50, // ✅ 50 فحص يومياً
+    maxStoredScans: 500, // ✅ 500 فحص مخزن
     exportReports: true,
     aiFixes: true,
     deepScan: true,
@@ -156,8 +163,9 @@ export const PLAN_FEATURES: Record<PlanType, PlanFeatures> = {
     bgColor: "bg-purple-950/30",
     badge: "Elite",
     badgeColor: "text-purple-400 bg-purple-500/20",
-    historyRetention: 365,
-    maxScans: Infinity,              // ✅ غير محدود
+    historyRetention: 365, // ✅ سنة
+    maxScans: Infinity, // ✅ غير محدود
+    maxStoredScans: 2000, // ✅ 2000 فحص مخزن
     exportReports: true,
     aiFixes: true,
     deepScan: true,
@@ -172,7 +180,7 @@ export const PLAN_FEATURES: Record<PlanType, PlanFeatures> = {
 };
 
 // ============================================================
-// ✅ الخطط الكاملة (مع الأسعار الصحيحة)
+// ✅ الخطط الكاملة
 // ============================================================
 
 export const PLANS: Record<PlanType, Plan> = {
@@ -187,19 +195,21 @@ export const PLANS: Record<PlanType, Plan> = {
     bgColor: "bg-slate-900/50",
     borderColor: "border-slate-700",
     features: [
-      "5 scans per day",
+      "10 scans per day", // ✅ موحّد
       "5 deep scans per day",
       "1 concurrent scan",
       "7-day history retention",
+      "Up to 50 stored scans", // ✅ جديد
       "Manual report export",
       "Community support",
     ],
     limits: {
-      scansPerDay:10,              // ✅ 10 فحوصات يومياً
+      scansPerDay: 10, // ✅ موحّد
       concurrentScans: 1,
       historyRetention: "7 days",
-      deepScanLimit: 5,             // ✅ 5 Deep Scans يومياً
-      unlimitedScans: false,        // ✅ غير محدود؟ لا
+      deepScanLimit: 5,
+      maxStoredScans: 50, // ✅ جديد
+      unlimitedScans: false,
       aiFixes: false,
       exportReports: true,
       deepScan: true,
@@ -234,6 +244,7 @@ export const PLANS: Record<PlanType, Plan> = {
       "Unlimited deep scans",
       "5 concurrent scans",
       "90-day history retention",
+      "Up to 500 stored scans", // ✅ جديد
       "Advanced AI fixes",
       "Automated report export",
       "Deep scan included",
@@ -242,11 +253,12 @@ export const PLANS: Record<PlanType, Plan> = {
       "Full API access",
     ],
     limits: {
-      scansPerDay: 50,              // ✅ 50 فحص يومياً
+      scansPerDay: 50,
       concurrentScans: 5,
       historyRetention: "90 days",
-      deepScanLimit: Infinity,      // ✅ غير محدود
-      unlimitedScans: false,        // ✅ غير محدود؟ لا (50 فقط)
+      deepScanLimit: Infinity,
+      maxStoredScans: 500, // ✅ جديد
+      unlimitedScans: false,
       aiFixes: true,
       exportReports: true,
       deepScan: true,
@@ -280,6 +292,7 @@ export const PLANS: Record<PlanType, Plan> = {
       "Unlimited deep scans",
       "Unlimited concurrent scans",
       "1-year history retention",
+      "Up to 2000 stored scans", // ✅ جديد
       "Unlimited AI fixes",
       "Automated report export",
       "Deep scan included",
@@ -289,11 +302,12 @@ export const PLANS: Record<PlanType, Plan> = {
       "White label",
     ],
     limits: {
-      scansPerDay: Infinity,        // ✅ غير محدود
+      scansPerDay: Infinity,
       concurrentScans: Infinity,
       historyRetention: "1 year",
-      deepScanLimit: Infinity,      // ✅ غير محدود
-      unlimitedScans: true,         // ✅ غير محدود؟ نعم
+      deepScanLimit: Infinity,
+      maxStoredScans: 2000, // ✅ جديد
+      unlimitedScans: true,
       aiFixes: true,
       exportReports: true,
       deepScan: true,
@@ -314,7 +328,7 @@ export const PLANS: Record<PlanType, Plan> = {
 };
 
 // ============================================================
-// ✅ دوال مساعدة للتحقق من الميزات
+// ✅ دوال مساعدة
 // ============================================================
 
 export const hasMinPlan = (
@@ -345,14 +359,22 @@ export const hasFeature = (
   return features[feature] as boolean;
 };
 
-export const getMaxScans = (plan: PlanType): number => {
+// ✅ يُرجع number أو Infinity
+export const getMaxScans = (plan: PlanType): UnlimitedNumber => {
   const features = getPlanFeatures(plan);
   return features.maxScans;
 };
 
-export const getHistoryRetention = (plan: PlanType): number => {
+// ✅ يُرجع number أو Infinity
+export const getHistoryRetention = (plan: PlanType): UnlimitedNumber => {
   const features = getPlanFeatures(plan);
   return features.historyRetention;
+};
+
+// ✅ دالة جديدة
+export const getMaxStoredScans = (plan: PlanType): UnlimitedNumber => {
+  const features = getPlanFeatures(plan);
+  return features.maxStoredScans;
 };
 
 export const checkUserCapability = (
@@ -360,6 +382,7 @@ export const checkUserCapability = (
   role: UserRole,
   action: "scan" | "deep_scan" | "ai_fix" | "export" | "delete" | "admin",
 ): { allowed: boolean; message?: string } => {
+  // ✅ الأدمن يملك كل الصلاحيات
   if (role === "admin") {
     return { allowed: true };
   }
@@ -369,6 +392,7 @@ export const checkUserCapability = (
   switch (action) {
     case "scan":
       return { allowed: true };
+
     case "deep_scan":
       return {
         allowed: features.deepScan,
@@ -376,6 +400,7 @@ export const checkUserCapability = (
           ? undefined
           : "Deep scan is not available on your plan. Please upgrade.",
       };
+
     case "ai_fix":
       return {
         allowed: features.aiFixes,
@@ -383,6 +408,7 @@ export const checkUserCapability = (
           ? undefined
           : "AI fixes are not available on your plan. Please upgrade.",
       };
+
     case "export":
       return {
         allowed: features.exportReports,
@@ -390,16 +416,23 @@ export const checkUserCapability = (
           ? undefined
           : "Export reports are not available on your plan. Please upgrade.",
       };
+
+    // ✅ الحذف متاح لـ Pro و Extra
     case "delete":
       return {
-        allowed: false,
-        message: "Delete is only available for admin users.",
+        allowed: plan !== "free",
+        message:
+          plan !== "free"
+            ? undefined
+            : "Delete is only available for Pro, Extra, or Admin users.",
       };
+
     case "admin":
       return {
         allowed: false,
         message: "Admin access required.",
       };
+
     default:
       return { allowed: false, message: "Unknown action." };
   }
@@ -435,7 +468,33 @@ export const getPlanIcon = (planId: PlanType): any => {
 };
 
 // ============================================================
-// ✅ تصدير كل شيء
+// ✅ دوال مساعدة إضافية
+// ============================================================
+
+/**
+ * ✅ يُرجع نصاً مقروءاً لعدد غير محدود
+ */
+export const formatUnlimited = (
+  value: UnlimitedNumber,
+  suffix: string = "",
+): string => {
+  if (value === Infinity) return `Unlimited${suffix ? " " + suffix : ""}`;
+  return `${value}${suffix ? " " + suffix : ""}`;
+};
+
+/**
+ * ✅ يُرجع نسبة استخدام التخزين (0-100)
+ */
+export const getStorageUsagePercent = (
+  used: number,
+  max: UnlimitedNumber,
+): number => {
+  if (max === Infinity || max === 0) return 0;
+  return Math.min(100, (used / max) * 100);
+};
+
+// ============================================================
+// ✅ تصدير افتراضي
 // ============================================================
 
 export default {
@@ -447,10 +506,13 @@ export default {
   hasFeature,
   getMaxScans,
   getHistoryRetention,
+  getMaxStoredScans,
   checkUserCapability,
   getPlanPrice,
   getAllPlans,
   isPaidPlan,
   getPlanDisplayName,
   getPlanIcon,
+  formatUnlimited,
+  getStorageUsagePercent,
 };

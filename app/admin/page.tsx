@@ -223,6 +223,10 @@ function AdminPage() {
   >("monthly");
   const [activatingSubscription, setActivatingSubscription] = useState(false);
 
+  // ✅ فلاتر قسم Payments
+  const [paymentPlanFilter, setPaymentPlanFilter] = useState<string>("all");
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>("all");
+
   // ✅ الحصول على جميع الخطط للمقارنة
   const allPlans = useMemo(() => Object.values(PLANS), []);
 
@@ -255,6 +259,91 @@ function AdminPage() {
     if (amount >= 1000) return `$${(amount / 1000).toFixed(1)}K`;
     return `$${amount}`;
   };
+
+  // ✅ حساب المبلغ الإجمالي المدفوع لكل مستخدم
+  const getUserTotalPaid = (userId: string): number => {
+    return payments
+      .filter((p) => p.userId === userId && p.status === "SUCCEEDED")
+      .reduce((sum, p) => sum + p.amount, 0);
+  };
+
+  // ✅ الحصول على المدفوعات الخاصة بمستخدم
+  const getUserPayments = (userId: string) => {
+    return payments.filter((p) => p.userId === userId);
+  };
+
+  // ✅ حساب حالة الاشتراك
+  const getSubscriptionStatus = (expiresAt: string | null | undefined) => {
+    if (!expiresAt)
+      return { status: "lifetime", label: "Lifetime", color: "purple" };
+    const expiry = new Date(expiresAt);
+    const now = new Date();
+    const daysRemaining = Math.ceil(
+      (expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+    );
+    if (daysRemaining <= 0)
+      return {
+        status: "expired",
+        label: "Expired",
+        color: "rose",
+        daysRemaining,
+      };
+    if (daysRemaining <= 7)
+      return {
+        status: "expiring",
+        label: "Expiring Soon",
+        color: "amber",
+        daysRemaining,
+      };
+    return {
+      status: "active",
+      label: "Active",
+      color: "emerald",
+      daysRemaining,
+    };
+  };
+
+  // ✅ الحصول على دورة الفوترة
+  const getBillingCycle = (metadata: any) => {
+    return metadata?.billingCycle === "yearly" ? "Yearly" : "Monthly";
+  };
+
+  // ✅ قائمة المستخدمين المشتركين (plan != free)
+  const subscribedUsers = useMemo(() => {
+    return users.filter((u) => u.plan && u.plan !== "free");
+  }, [users]);
+
+  // ✅ قائمة مدفوعات المستخدمين المشتركين
+  const subscribedUserPayments = useMemo(() => {
+    const userIds = new Set(subscribedUsers.map((u) => u.id));
+    return payments.filter((p) => userIds.has(p.userId));
+  }, [subscribedUsers, payments]);
+
+  // ✅ تصفية المستخدمين المشتركين
+  const filteredSubscribedUsers = useMemo(() => {
+    let result = [...subscribedUsers];
+
+    if (paymentPlanFilter !== "all") {
+      result = result.filter((u) => u.plan === paymentPlanFilter);
+    }
+
+    if (paymentStatusFilter !== "all") {
+      result = result.filter((u) => {
+        const status = getSubscriptionStatus(u.subscription?.expiresAt);
+        return status.status === paymentStatusFilter;
+      });
+    }
+
+    if (searchQuery) {
+      result = result.filter(
+        (u) =>
+          u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          u.name?.toLowerCase().includes(searchQuery.toLowerCase()),
+      );
+    }
+
+    return result;
+  }, [subscribedUsers, paymentPlanFilter, paymentStatusFilter, searchQuery]);
 
   // ✅ توليد مفتاح ترخيص
   const handleCreateLicense = async (planId: string, email?: string) => {
@@ -318,10 +407,8 @@ function AdminPage() {
         setSuccess(
           `✅ Subscription activated successfully! ${res.data.plan} plan (${selectedBillingCycle}) for user`,
         );
-        // ✅ تحديث البيانات
         await fetchAllData();
 
-        // ✅ إعادة تعيين الحقول
         setSelectedUserId("");
         setSelectedPlanForUser("pro");
         setSelectedBillingCycle("monthly");
@@ -526,22 +613,84 @@ function AdminPage() {
   };
 
   // ✅ جلب جميع البيانات
+  // ✅ جلب جميع البيانات — بالترتيب الصحيح
   const fetchAllData = async () => {
     setRefreshing(true);
     setError("");
     try {
-      // ✅ جلب المستخدمين أولاً
-      await fetchUsers();
-      // ✅ ثم جلب المدفوعات
-      await fetchPayments();
-      // ✅ ثم جلب الاشتراكات
-      await fetchSubscriptions();
-      // ✅ ثم جلب المفاتيح
-      await fetchLicenses();
-      // ✅ وأخيراً الإحصائيات (بعد توفر جميع البيانات)
-      await fetchStats();
+      // ✅ جلب كل البيانات أولاً بشكل متوازٍ
+      const [usersRes, paymentsRes, licensesRes, subsRes] =
+        await Promise.allSettled([
+          api.get("/admin/users", { withCredentials: true }),
+          api.get("/admin/payments", { withCredentials: true }),
+          api.get("/admin/licenses", { withCredentials: true }),
+          api.get("/subscription/admin/all", { withCredentials: true }),
+        ]);
+
+      // ✅ معالجة users
+      let newUsers: UserData[] = [];
+      if (usersRes.status === "fulfilled") {
+        newUsers = usersRes.value.data || [];
+        setUsers(newUsers);
+        console.log("✅ Users loaded:", newUsers.length);
+      } else {
+        console.error("❌ Users failed:", usersRes.reason);
+      }
+
+      // ✅ معالجة payments
+      let newPayments: PaymentData[] = [];
+      if (paymentsRes.status === "fulfilled") {
+        const raw = paymentsRes.value.data;
+        newPayments = Array.isArray(raw)
+          ? raw
+          : raw?.data || raw?.payments || [];
+        setPayments(newPayments);
+        console.log("✅ Payments loaded:", newPayments.length);
+      } else {
+        console.error("❌ Payments failed:", paymentsRes.reason);
+      }
+
+      // ✅ معالجة licenses
+      let newLicenses: LicenseData[] = [];
+      if (licensesRes.status === "fulfilled") {
+        newLicenses = licensesRes.value.data || [];
+        setLicenses(newLicenses);
+        console.log("✅ Licenses loaded:", newLicenses.length);
+      } else {
+        console.error("❌ Licenses failed:", licensesRes.reason);
+      }
+
+      // ✅ معالجة subscriptions
+      let newSubs: any[] = [];
+      if (subsRes.status === "fulfilled") {
+        newSubs = Array.isArray(subsRes.value.data) ? subsRes.value.data : [];
+        setSubscriptions(newSubs);
+        console.log("✅ Subscriptions loaded:", newSubs.length);
+      } else {
+        console.warn("⚠️ Subscriptions failed, using users fallback");
+        newSubs = newUsers
+          .filter((u) => u.plan && u.plan !== "free")
+          .map((u) => ({
+            id: u.id,
+            userId: u.id,
+            user: { email: u.email, name: u.name },
+            plan: u.plan,
+            planId: u.plan,
+            status: "ACTIVE",
+            isActive: true,
+            billingCycle: "monthly",
+            startDate: u.createdAt,
+            endDate: u.subscription?.expiresAt || null,
+            expiresAt: u.subscription?.expiresAt || null,
+          }));
+        setSubscriptions(newSubs);
+      }
+
+      // ✅ الآن احسب الإحصائيات بالبيانات المحدّثة
+      await fetchStats(newUsers, newPayments, newLicenses);
     } catch (err) {
-      console.error("Failed to fetch data:", err);
+      console.error("❌ Failed to fetch data:", err);
+      setError("Failed to load dashboard data");
     } finally {
       setRefreshing(false);
     }
@@ -583,10 +732,8 @@ function AdminPage() {
       console.log("✅ Payments data:", paymentsData);
       console.log("✅ Stats data:", statsData);
 
-      // ✅ تحديث حالة المدفوعات
       setPayments(paymentsData);
 
-      // ✅ تحديث الإحصائيات مباشرة
       if (statsData) {
         setStats((prev) => ({
           ...prev!,
@@ -630,7 +777,6 @@ function AdminPage() {
       setSubscriptions(subsData);
     } catch (err) {
       console.error("Failed to fetch subscriptions:", err);
-      // ✅ استخدام بيانات احتياطية من المستخدمين
       const paidUsers = users.filter((u) => u.plan !== "free");
       setSubscriptions(
         paidUsers.map((u) => ({
@@ -651,106 +797,140 @@ function AdminPage() {
   };
 
   // ✅ جلب الإحصائيات
-  const fetchStats = async () => {
+  // ✅ جلب الإحصائيات — يعمل حتى لو فشل الـ API
+  const fetchStats = async (
+    usersData?: UserData[],
+    paymentsData?: PaymentData[],
+    licensesData?: LicenseData[],
+  ) => {
+    // ✅ استخدم البيانات المُمرَّرة أو الحالية
+    const currentUsers = usersData || users;
+    const currentPayments = paymentsData || payments;
+    const currentLicenses = licensesData || licenses;
+
+    console.log("📊 fetchStats called with:", {
+      usersCount: currentUsers.length,
+      paymentsCount: currentPayments.length,
+      licensesCount: currentLicenses.length,
+    });
+
+    // ✅ 1. حسابات محلية من البيانات المتاحة
+    const successfulPayments = currentPayments.filter(
+      (p) => p.status === "SUCCEEDED",
+    );
+    const totalRevenue = successfulPayments.reduce(
+      (sum, p) => sum + (p.amount || 0),
+      0,
+    );
+    const totalPayments = currentPayments.length;
+
+    // ✅ المستخدمون المدفوعون
+    const paidUsersList = currentUsers.filter(
+      (u) => u.plan && u.plan !== "free",
+    );
+    const totalPaidUsers = paidUsersList.length;
+
+    // ✅ الإيرادات حسب الخطة
+    const revenueByPlan: {
+      [key: string]: { amount: number; count: number };
+    } = {};
+    successfulPayments.forEach((p) => {
+      const planId = p.metadata?.planId || p.user?.plan || "free";
+      if (!revenueByPlan[planId]) {
+        revenueByPlan[planId] = { amount: 0, count: 0 };
+      }
+      revenueByPlan[planId].amount += p.amount || 0;
+      revenueByPlan[planId].count += 1;
+    });
+
+    // ✅ الإيرادات الشهرية
+    const monthlyData: { [key: string]: { amount: number; count: number } } =
+      {};
+    successfulPayments.forEach((p) => {
+      const date = new Date(p.createdAt);
+      const monthKey = `${date.getFullYear()}-${String(
+        date.getMonth() + 1,
+      ).padStart(2, "0")}`;
+      if (!monthlyData[monthKey]) {
+        monthlyData[monthKey] = { amount: 0, count: 0 };
+      }
+      monthlyData[monthKey].amount += p.amount || 0;
+      monthlyData[monthKey].count += 1;
+    });
+
+    const monthlyRevenue = Object.entries(monthlyData)
+      .map(([month, data]) => ({
+        month,
+        amount: data.amount,
+        count: data.count,
+      }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+
+    // ✅ توزيع الخطط
+    const planDistribution = Object.entries(
+      currentUsers.reduce(
+        (acc, u) => {
+          const plan = u.plan || "free";
+          acc[plan] = (acc[plan] || 0) + 1;
+          return acc;
+        },
+        {} as Record<string, number>,
+      ),
+    ).map(([plan, count]) => ({
+      plan,
+      count,
+      percentage:
+        currentUsers.length > 0 ? (count / currentUsers.length) * 100 : 0,
+    }));
+
+    // ✅ إحصائيات من الـ API (اختياري)
+    let apiStats: any = {};
     try {
       const res = await api.get("/admin/stats", { withCredentials: true });
+      console.log("📊 /admin/stats response:", res.data);
+      apiStats = res.data || {};
+    } catch (err) {
+      console.warn("⚠️ /admin/stats failed, using local calculations:", err);
+    }
 
-      // ✅ استخدام payments الحالية بدلاً من انتظارها
-      const successfulPayments = payments.filter(
-        (p) => p.status === "SUCCEEDED",
-      );
-      const totalRevenue = successfulPayments.reduce(
-        (sum, p) => sum + p.amount,
-        0,
-      );
-      const totalPayments = payments.length;
-      const paidUsers = users.filter((u) => u.plan !== "free").length;
-      const activeSubs = subscriptions.filter(
-        (s) => s.isActive !== false,
-      ).length;
-
-      // ✅ حساب الإيرادات حسب الخطة
-      const revenueByPlan: {
-        [key: string]: { amount: number; count: number };
-      } = {};
-      successfulPayments.forEach((p) => {
-        const planId = p.metadata?.planId || "free";
-        if (!revenueByPlan[planId]) {
-          revenueByPlan[planId] = { amount: 0, count: 0 };
-        }
-        revenueByPlan[planId].amount += p.amount;
-        revenueByPlan[planId].count += 1;
-      });
-
-      // ✅ حساب الإيرادات الشهرية
-      const monthlyData: { [key: string]: { amount: number; count: number } } =
-        {};
-      successfulPayments.forEach((p) => {
-        const date = new Date(p.createdAt);
-        const monthKey = `${date.getFullYear()}-${String(
-          date.getMonth() + 1,
-        ).padStart(2, "0")}`;
-        if (!monthlyData[monthKey]) {
-          monthlyData[monthKey] = { amount: 0, count: 0 };
-        }
-        monthlyData[monthKey].amount += p.amount;
-        monthlyData[monthKey].count += 1;
-      });
-
-      const monthlyRevenue = Object.entries(monthlyData)
-        .map(([month, data]) => ({
-          month,
-          amount: data.amount,
-          count: data.count,
-        }))
-        .sort((a, b) => a.month.localeCompare(b.month));
-
-      // ✅ توزيع الخطط
-      const planDistribution = Object.entries(
-        users.reduce(
-          (acc, u) => {
-            const plan = u.plan || "free";
-            acc[plan] = (acc[plan] || 0) + 1;
-            return acc;
-          },
-          {} as Record<string, number>,
-        ),
-      ).map(([plan, count]) => ({
-        plan,
-        count,
-        percentage: users.length > 0 ? (count / users.length) * 100 : 0,
-      }));
-
-      setStats({
-        totalUsers: users.length,
-        totalScans: res.data?.totalScans || 0,
-        totalRevenue,
-        totalPayments,
-        totalLicenses: licenses.length,
-        activeLicenses: licenses.filter((l) => l.isActive).length,
-        activeSubscriptions: activeSubs,
-        totalPaidUsers: paidUsers,
-        averageAmount:
-          successfulPayments.length > 0
-            ? totalRevenue / successfulPayments.length
-            : 0,
-        planDistribution,
-        recentUsers: users.slice(0, 5),
-        recentPayments: payments.slice(0, 5),
-        monthlyRevenue,
-        yearlyRevenue: [],
-        revenueByPlan: Object.entries(revenueByPlan).map(([plan, data]) => ({
+    // ✅ دمج البيانات (API له الأولوية، ثم الحسابات المحلية)
+    const finalStats: StatsData = {
+      totalUsers: apiStats.totalUsers ?? currentUsers.length,
+      totalScans:
+        apiStats.totalScans ??
+        currentUsers.reduce((sum, u) => sum + (u.scansCount || 0), 0),
+      totalRevenue: apiStats.totalRevenue ?? totalRevenue,
+      totalPayments: apiStats.totalPayments ?? totalPayments,
+      totalLicenses: apiStats.totalLicenses ?? currentLicenses.length,
+      activeLicenses:
+        apiStats.activeLicenses ??
+        currentLicenses.filter((l) => l.isActive).length,
+      activeSubscriptions:
+        apiStats.activeSubscriptions ?? apiStats.activeUsers ?? totalPaidUsers,
+      totalPaidUsers:
+        apiStats.totalPaidUsers ?? apiStats.paidUsers ?? totalPaidUsers,
+      averageAmount:
+        apiStats.averageAmount ??
+        (successfulPayments.length > 0
+          ? totalRevenue / successfulPayments.length
+          : 0),
+      planDistribution: apiStats.planDistribution ?? planDistribution,
+      recentUsers: currentUsers.slice(0, 5),
+      recentPayments: currentPayments.slice(0, 5),
+      monthlyRevenue: apiStats.monthlyRevenue ?? monthlyRevenue,
+      yearlyRevenue: apiStats.yearlyRevenue ?? [],
+      revenueByPlan:
+        apiStats.revenueByPlan ??
+        Object.entries(revenueByPlan).map(([plan, data]) => ({
           plan,
           amount: data.amount,
           count: data.count,
         })),
-      });
-    } catch (err) {
-      console.error("Failed to fetch stats:", err);
-      setError("Failed to load statistics");
-    }
-  };
+    };
 
+    console.log("✅ Final stats:", finalStats);
+    setStats(finalStats);
+  };
   // ✅ تعطيل مفتاح
   const handleRevokeLicense = async (licenseId: string) => {
     if (!confirm("Are you sure you want to revoke this license?")) return;
@@ -934,8 +1114,6 @@ function AdminPage() {
           Activate Subscription for User
         </h3>
         <div className="flex flex-col sm:flex-row gap-3">
-          {/* ✅ اختيار المستخدم */}
-          {/* ✅ اختيار المستخدم - عرض جميع المستخدمين */}
           <select
             value={selectedUserId}
             onChange={(e) => setSelectedUserId(e.target.value)}
@@ -953,7 +1131,6 @@ function AdminPage() {
             })}
           </select>
 
-          {/* ✅ اختيار الخطة */}
           <select
             value={selectedPlanForUser}
             onChange={(e) => setSelectedPlanForUser(e.target.value)}
@@ -975,7 +1152,6 @@ function AdminPage() {
               })}
           </select>
 
-          {/* ✅ اختيار الفوترة (شهري/سنوي) */}
           <div className="flex items-center gap-1 bg-slate-950 border border-slate-800 rounded-xl p-1">
             <button
               onClick={() => setSelectedBillingCycle("monthly")}
@@ -1000,7 +1176,6 @@ function AdminPage() {
             </button>
           </div>
 
-          {/* ✅ زر التفعيل */}
           <button
             onClick={handleActivateSubscription}
             disabled={
@@ -1023,7 +1198,6 @@ function AdminPage() {
           </button>
         </div>
 
-        {/* ✅ عرض السعر حسب الاختيار */}
         {selectedPlanForUser && (
           <div className="mt-2 text-xs text-slate-400">
             Price:{" "}
@@ -1100,7 +1274,6 @@ function AdminPage() {
       {/* ============================================================ */}
       {activeTab === "overview" && stats && (
         <div className="space-y-6">
-          {/* Stats Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
             {[
               {
@@ -1163,7 +1336,6 @@ function AdminPage() {
             })}
           </div>
 
-          {/* Monthly Revenue Chart */}
           {stats.monthlyRevenue && stats.monthlyRevenue.length > 0 && (
             <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
               <div className="flex items-center justify-between mb-4">
@@ -1214,7 +1386,6 @@ function AdminPage() {
             </div>
           )}
 
-          {/* Revenue by Plan & Quick Stats */}
           <div className="grid md:grid-cols-2 gap-4">
             <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
               <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
@@ -1317,7 +1488,6 @@ function AdminPage() {
             </div>
           </div>
 
-          {/* Plan Distribution */}
           <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
             <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
               <Users className="h-4 w-4 text-sky-400" />
@@ -1351,7 +1521,6 @@ function AdminPage() {
             </div>
           </div>
 
-          {/* Recent Activity */}
           <div className="grid md:grid-cols-2 gap-4">
             <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
               <h3 className="text-sm font-bold text-white mb-3">
@@ -1499,12 +1668,25 @@ function AdminPage() {
                         {new Date(u.createdAt).toLocaleDateString()}
                       </td>
                       <td className="py-2 px-3">
-                        <button
-                          onClick={() => handleDeleteUser(u.id)}
-                          className="text-rose-400 hover:text-rose-300 transition"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => {
+                              setSelectedUser(u);
+                              setShowUserModal(true);
+                            }}
+                            className="p-1 rounded-lg text-slate-400 hover:text-sky-400 hover:bg-slate-800 transition"
+                            title="View Details"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteUser(u.id)}
+                            className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition"
+                            title="Delete User"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1519,48 +1701,134 @@ function AdminPage() {
       {/* ✅ PAYMENTS TAB */}
       {/* ============================================================ */}
       {activeTab === "payments" && (
-        <div className="space-y-4">
-          {/* ✅ بطاقة الإحصائيات */}
-          <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 to-emerald-600/5 border border-emerald-500/20">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <div>
-                <p className="text-xs text-slate-400 uppercase tracking-wider">
-                  Total Revenue
-                </p>
-                <p className="text-3xl font-bold text-white font-mono">
-                  {formatCurrency(stats?.totalRevenue || 0)}
-                </p>
-                <p className="text-xs text-slate-400 mt-1">
-                  {payments.length} subscribed users
-                </p>
-              </div>
-              <div className="flex items-center gap-4 text-xs">
-                <div>
-                  <p className="text-slate-400">Total</p>
-                  <p className="text-white font-bold">{payments.length}</p>
-                </div>
-                <div>
-                  <p className="text-slate-400">Paid Users</p>
-                  <p className="text-white font-bold">
-                    {stats?.totalPaidUsers || 0}
+        <div className="space-y-6">
+          {/* ✅ بطاقة الإحصائيات الشاملة */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              {
+                label: "Total Revenue",
+                value: formatCurrency(stats?.totalRevenue || 0),
+                icon: DollarSign,
+                color: "text-emerald-400",
+                bg: "bg-emerald-500/10",
+                subtitle: `${subscribedUserPayments.filter((p) => p.status === "SUCCEEDED").length} successful`,
+              },
+              {
+                label: "Paid Users",
+                value: subscribedUsers.length,
+                icon: Users,
+                color: "text-sky-400",
+                bg: "bg-sky-500/10",
+                subtitle: `${users.filter((u) => u.plan === "free").length} free users`,
+              },
+              {
+                label: "Active Subs",
+                value: subscribedUsers.filter(
+                  (u) =>
+                    getSubscriptionStatus(u.subscription?.expiresAt).status ===
+                    "active",
+                ).length,
+                icon: Crown,
+                color: "text-amber-400",
+                bg: "bg-amber-500/10",
+                subtitle: `${subscribedUsers.filter((u) => getSubscriptionStatus(u.subscription?.expiresAt).status === "expiring").length} expiring soon`,
+              },
+              {
+                label: "Average Payment",
+                value: formatCurrency(stats?.averageAmount || 0),
+                icon: TrendingUp,
+                color: "text-purple-400",
+                bg: "bg-purple-500/10",
+                subtitle: `Total: ${formatCurrency(stats?.totalRevenue || 0)}`,
+              },
+            ].map((stat, i) => {
+              const Icon = stat.icon;
+              return (
+                <div
+                  key={i}
+                  className="p-3 sm:p-4 rounded-xl bg-slate-900/40 border border-slate-800/50 text-center hover:border-slate-700 transition"
+                >
+                  <div
+                    className={`inline-flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-xl ${stat.bg} border border-slate-800/50 mb-1.5 sm:mb-2`}
+                  >
+                    <Icon className={`h-4 w-4 sm:h-5 sm:w-5 ${stat.color}`} />
+                  </div>
+                  <p className="text-lg sm:text-xl font-bold text-white font-mono">
+                    {stat.value}
                   </p>
-                </div>
-                <div>
-                  <p className="text-slate-400">Revenue</p>
-                  <p className="text-white font-bold">
-                    {formatCurrency(stats?.totalRevenue || 0)}
+                  <p className="text-[9px] sm:text-[10px] text-slate-400 uppercase tracking-wider">
+                    {stat.label}
                   </p>
+                  {stat.subtitle && (
+                    <p className="text-[8px] text-slate-500 mt-0.5">
+                      {stat.subtitle}
+                    </p>
+                  )}
                 </div>
-              </div>
+              );
+            })}
+          </div>
+
+          {/* ✅ فلاتر */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-4 rounded-2xl bg-slate-900/40 border border-slate-800/50">
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+              <Filter className="h-4 w-4" />
+              <span>Filters:</span>
+            </div>
+
+            <select
+              value={paymentPlanFilter}
+              onChange={(e) => setPaymentPlanFilter(e.target.value)}
+              className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-sky-500 transition"
+            >
+              <option value="all">All Plans</option>
+              {allPlans
+                .filter((p) => p.id !== "free")
+                .map((plan) => (
+                  <option key={plan.id} value={plan.id}>
+                    {getPlanDisplayName(plan.id as PlanType)}
+                  </option>
+                ))}
+            </select>
+
+            <select
+              value={paymentStatusFilter}
+              onChange={(e) => setPaymentStatusFilter(e.target.value)}
+              className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-sky-500 transition"
+            >
+              <option value="all">All Status</option>
+              <option value="active">✅ Active</option>
+              <option value="expiring">⚠️ Expiring Soon</option>
+              <option value="expired">❌ Expired</option>
+              <option value="lifetime">♾️ Lifetime</option>
+            </select>
+
+            <div className="flex-1 text-right text-xs text-slate-500">
+              Showing {filteredSubscribedUsers.length} of{" "}
+              {subscribedUsers.length} users
             </div>
           </div>
 
-          {/* ✅ جدول المدفوعات */}
+          {/* ✅ جدول المستخدمين المشتركين */}
           <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
-            <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-              <CreditCard className="h-4 w-4 text-emerald-400" />
-              Subscribed Users ({payments.length})
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <CreditCard className="h-4 w-4 text-emerald-400" />
+                Paid Users ({filteredSubscribedUsers.length})
+              </h3>
+              <div className="text-xs text-slate-400">
+                Total:{" "}
+                <span className="text-emerald-400 font-bold font-mono">
+                  {formatCurrency(
+                    filteredSubscribedUsers.reduce(
+                      (sum, u) => sum + getUserTotalPaid(u.id),
+                      0,
+                    ),
+                  )}
+                </span>
+              </div>
+            </div>
+
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -1568,46 +1836,46 @@ function AdminPage() {
                     <th className="text-left py-2 px-3">#</th>
                     <th className="text-left py-2 px-3">User</th>
                     <th className="text-left py-2 px-3">Plan</th>
-                    <th className="text-left py-2 px-3">Price</th>
+                    <th className="text-left py-2 px-3">Amount</th>
                     <th className="text-left py-2 px-3">Billing</th>
-                    <th className="text-left py-2 px-3">Status</th>
+                    <th className="text-left py-2 px-3">Start Date</th>
                     <th className="text-left py-2 px-3">Expires</th>
+                    <th className="text-left py-2 px-3">Status</th>
+                    <th className="text-left py-2 px-3">Scans</th>
+                    <th className="text-left py-2 px-3">Actions</th>
                   </tr>
                 </thead>
-                {/* ✅ جدول المدفوعات - الجزء المعدل */}
                 <tbody>
-                  {payments.length > 0 ? (
-                    payments.map((payment, index) => {
-                      // ✅ الحصول على الخطة من metadata (الأكثر أماناً)
-                      const userPlan = payment.metadata?.planId || "free";
+                  {filteredSubscribedUsers.length > 0 ? (
+                    filteredSubscribedUsers.map((u, index) => {
+                      const planInfo = getPlanDisplayInfo(u.plan);
+                      const totalPaid = getUserTotalPaid(u.id);
+                      const userPayments = getUserPayments(u.id);
+                      const latestPayment = userPayments.sort(
+                        (a, b) =>
+                          new Date(b.createdAt).getTime() -
+                          new Date(a.createdAt).getTime(),
+                      )[0];
 
-                      // ✅ الحصول على سعر الخطة من PLANS
+                      const expiresAt =
+                        u.subscription?.expiresAt ||
+                        latestPayment?.metadata?.expiresAt;
+                      const statusInfo = getSubscriptionStatus(expiresAt);
+                      const billingCycle = getBillingCycle(
+                        latestPayment?.metadata,
+                      );
+
                       const planPrice =
-                        PLANS[userPlan as keyof typeof PLANS]?.price || 0;
+                        PLANS[u.plan as keyof typeof PLANS]?.price || 0;
                       const planPriceYearly =
-                        PLANS[userPlan as keyof typeof PLANS]?.priceYearly ||
+                        PLANS[u.plan as keyof typeof PLANS]?.priceYearly ||
                         planPrice * 12;
-
-                      // ✅ تحديد نوع الفوترة
-                      const billingCycle =
-                        payment.metadata?.billingCycle || "monthly";
-                      const displayPrice =
-                        billingCycle === "yearly" ? planPriceYearly : planPrice;
-                      const billingLabel =
-                        billingCycle === "yearly" ? "Yearly" : "Monthly";
-
-                      // ✅ معلومات الخطة للعرض
-                      const planInfo = getPlanDisplayInfo(userPlan);
-
-                      // ✅ حالة الاشتراك
-                      const expiresAt = payment.metadata?.expiresAt;
-                      const isActive = expiresAt
-                        ? new Date(expiresAt) > new Date()
-                        : true;
+                      const expectedPrice =
+                        billingCycle === "Yearly" ? planPriceYearly : planPrice;
 
                       return (
                         <tr
-                          key={payment.id}
+                          key={u.id}
                           className="border-b border-slate-800/50 hover:bg-slate-800/30 transition"
                         >
                           <td className="py-2 px-3 text-slate-500 text-xs">
@@ -1616,51 +1884,125 @@ function AdminPage() {
                           <td className="py-2 px-3">
                             <div>
                               <p className="text-white text-sm">
-                                {payment.user?.name || "Unknown"}
+                                {u.name || "Unknown"}
                               </p>
                               <p className="text-slate-400 text-xs">
-                                {payment.user?.email || "No email"}
+                                {u.email}
                               </p>
                             </div>
                           </td>
                           <td className="py-2 px-3">
                             <span
-                              className={`text-xs px-2 py-0.5 rounded-full ${planInfo.bgColor} ${planInfo.borderColor} ${planInfo.color}`}
+                              className={`text-xs px-2 py-0.5 rounded-full ${planInfo.bgColor} ${planInfo.borderColor} ${planInfo.color} inline-flex items-center gap-1`}
                             >
-                              <planInfo.icon className="h-3 w-3 inline mr-0.5" />
+                              <planInfo.icon className="h-3 w-3" />
                               {planInfo.displayName}
                             </span>
                           </td>
                           <td className="py-2 px-3">
                             <div>
                               <p className="text-white font-mono font-bold">
-                                {formatCurrency(displayPrice)}
+                                {totalPaid > 0
+                                  ? formatCurrency(totalPaid)
+                                  : formatCurrency(expectedPrice)}
                               </p>
                               <p className="text-slate-500 text-[10px]">
-                                {billingLabel}
+                                {userPayments.length > 0
+                                  ? `${userPayments.length} payment${userPayments.length > 1 ? "s" : ""}`
+                                  : "No payments recorded"}
                               </p>
                             </div>
                           </td>
                           <td className="py-2 px-3">
-                            <span className="text-xs text-slate-300 capitalize">
-                              {billingLabel}
+                            <span
+                              className={`text-xs px-2 py-0.5 rounded-full ${
+                                billingCycle === "Yearly"
+                                  ? "bg-purple-500/20 text-purple-400"
+                                  : "bg-sky-500/20 text-sky-400"
+                              }`}
+                            >
+                              {billingCycle}
                             </span>
+                          </td>
+                          <td className="py-2 px-3 text-slate-400 text-xs">
+                            {u.createdAt
+                              ? new Date(u.createdAt).toLocaleDateString()
+                              : "—"}
+                          </td>
+                          <td className="py-2 px-3 text-slate-400 text-xs">
+                            {expiresAt ? (
+                              <div>
+                                <p>
+                                  {new Date(expiresAt).toLocaleDateString()}
+                                </p>
+                                {statusInfo.daysRemaining !== undefined && (
+                                  <p
+                                    className={`text-[10px] ${
+                                      statusInfo.daysRemaining <= 0
+                                        ? "text-rose-400"
+                                        : statusInfo.daysRemaining <= 7
+                                          ? "text-amber-400"
+                                          : "text-emerald-400"
+                                    }`}
+                                  >
+                                    {statusInfo.daysRemaining <= 0
+                                      ? "Expired"
+                                      : `${statusInfo.daysRemaining} days left`}
+                                  </p>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-purple-400">Lifetime</span>
+                            )}
                           </td>
                           <td className="py-2 px-3">
                             <span
                               className={`text-xs px-2 py-0.5 rounded-full ${
-                                isActive
+                                statusInfo.status === "active"
                                   ? "bg-emerald-500/20 text-emerald-400"
-                                  : "bg-rose-500/20 text-rose-400"
+                                  : statusInfo.status === "expiring"
+                                    ? "bg-amber-500/20 text-amber-400"
+                                    : statusInfo.status === "lifetime"
+                                      ? "bg-purple-500/20 text-purple-400"
+                                      : "bg-rose-500/20 text-rose-400"
                               }`}
                             >
-                              {isActive ? "✅ Active" : "❌ Expired"}
+                              {statusInfo.status === "active" && "✅ Active"}
+                              {statusInfo.status === "expiring" &&
+                                "⚠️ Expiring"}
+                              {statusInfo.status === "expired" && "❌ Expired"}
+                              {statusInfo.status === "lifetime" &&
+                                "♾️ Lifetime"}
                             </span>
                           </td>
-                          <td className="py-2 px-3 text-slate-400 text-xs">
-                            {expiresAt
-                              ? new Date(expiresAt).toLocaleDateString()
-                              : "Never"}
+                          <td className="py-2 px-3 text-slate-300 text-xs">
+                            {u.scansCount || 0}
+                          </td>
+                          <td className="py-2 px-3">
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => {
+                                  setSelectedUser(u);
+                                  setShowUserModal(true);
+                                }}
+                                className="p-1 rounded-lg text-slate-400 hover:text-sky-400 hover:bg-slate-800 transition"
+                                title="View Details"
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={() =>
+                                  handleChangeUserPlan(
+                                    u.id,
+                                    u.plan === "extra" ? "pro" : "extra",
+                                  )
+                                }
+                                className="p-1 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition"
+                                title="Change Plan"
+                              >
+                                <Crown className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1668,13 +2010,16 @@ function AdminPage() {
                   ) : (
                     <tr>
                       <td
-                        colSpan={7}
-                        className="py-8 text-center text-slate-400"
+                        colSpan={10}
+                        className="py-12 text-center text-slate-400"
                       >
-                        <CreditCard className="h-10 w-10 mx-auto mb-2 text-slate-600" />
-                        <p>No subscribed users found</p>
+                        <CreditCard className="h-12 w-12 mx-auto mb-3 text-slate-600" />
+                        <p className="text-sm">No subscribed users found</p>
                         <p className="text-xs text-slate-500 mt-1">
-                          Users with paid subscriptions will appear here
+                          {paymentPlanFilter !== "all" ||
+                          paymentStatusFilter !== "all"
+                            ? "Try changing your filters"
+                            : "Users with paid subscriptions will appear here"}
                         </p>
                       </td>
                     </tr>
@@ -1683,6 +2028,89 @@ function AdminPage() {
               </table>
             </div>
           </div>
+
+          {/* ✅ جدول المدفوعات الخام */}
+          {payments.length > 0 && (
+            <div className="p-4 sm:p-6 rounded-2xl bg-slate-900/80 border border-slate-800">
+              <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+                <History className="h-4 w-4 text-sky-400" />
+                Payment History ({payments.length})
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-xs text-slate-400">
+                      <th className="text-left py-2 px-3">#</th>
+                      <th className="text-left py-2 px-3">User</th>
+                      <th className="text-left py-2 px-3">Amount</th>
+                      <th className="text-left py-2 px-3">Status</th>
+                      <th className="text-left py-2 px-3">Description</th>
+                      <th className="text-left py-2 px-3">Date</th>
+                      <th className="text-left py-2 px-3">Paid At</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payments.slice(0, 20).map((payment, index) => (
+                      <tr
+                        key={payment.id}
+                        className="border-b border-slate-800/50 hover:bg-slate-800/30 transition"
+                      >
+                        <td className="py-2 px-3 text-slate-500 text-xs">
+                          {index + 1}
+                        </td>
+                        <td className="py-2 px-3">
+                          <div>
+                            <p className="text-white text-sm">
+                              {payment.user?.name || "Unknown"}
+                            </p>
+                            <p className="text-slate-400 text-xs">
+                              {payment.user?.email || "No email"}
+                            </p>
+                          </div>
+                        </td>
+                        <td className="py-2 px-3">
+                          <span className="text-white font-mono font-bold">
+                            {formatCurrency(payment.amount)}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3">
+                          <span
+                            className={`text-xs px-2 py-0.5 rounded-full ${
+                              payment.status === "SUCCEEDED"
+                                ? "bg-emerald-500/20 text-emerald-400"
+                                : payment.status === "FAILED"
+                                  ? "bg-rose-500/20 text-rose-400"
+                                  : payment.status === "REFUNDED"
+                                    ? "bg-amber-500/20 text-amber-400"
+                                    : "bg-slate-500/20 text-slate-400"
+                            }`}
+                          >
+                            {payment.status}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 text-slate-300 text-xs">
+                          {payment.description || "—"}
+                        </td>
+                        <td className="py-2 px-3 text-slate-400 text-xs">
+                          {new Date(payment.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="py-2 px-3 text-slate-400 text-xs">
+                          {payment.paidAt
+                            ? new Date(payment.paidAt).toLocaleDateString()
+                            : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {payments.length > 20 && (
+                  <p className="text-center text-xs text-slate-500 mt-3">
+                    Showing 20 of {payments.length} payments
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1946,6 +2374,121 @@ function AdminPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ User Details Modal */}
+      {showUserModal && selectedUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <User className="h-5 w-5 text-sky-400" />
+                User Details
+              </h3>
+              <button
+                onClick={() => {
+                  setShowUserModal(false);
+                  setSelectedUser(null);
+                }}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                <p className="text-[10px] text-slate-400 uppercase">Name</p>
+                <p className="text-sm text-white">{selectedUser.name || "—"}</p>
+              </div>
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                <p className="text-[10px] text-slate-400 uppercase">Email</p>
+                <p className="text-sm text-white truncate">
+                  {selectedUser.email}
+                </p>
+              </div>
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                <p className="text-[10px] text-slate-400 uppercase">Plan</p>
+                <p className="text-sm text-white">{selectedUser.plan}</p>
+              </div>
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                <p className="text-[10px] text-slate-400 uppercase">Role</p>
+                <p className="text-sm text-white">{selectedUser.role}</p>
+              </div>
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                <p className="text-[10px] text-slate-400 uppercase">
+                  Total Paid
+                </p>
+                <p className="text-sm text-emerald-400 font-mono font-bold">
+                  {formatCurrency(getUserTotalPaid(selectedUser.id))}
+                </p>
+              </div>
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                <p className="text-[10px] text-slate-400 uppercase">
+                  Total Scans
+                </p>
+                <p className="text-sm text-white font-mono">
+                  {selectedUser.scansCount || 0}
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <h4 className="text-xs font-bold text-slate-300 mb-2">
+                Payment History ({getUserPayments(selectedUser.id).length})
+              </h4>
+              {getUserPayments(selectedUser.id).length > 0 ? (
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {getUserPayments(selectedUser.id).map((p) => (
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-between p-2 rounded-lg bg-slate-950 border border-slate-800"
+                    >
+                      <div>
+                        <p className="text-xs text-white">
+                          {p.description || "Payment"}
+                        </p>
+                        <p className="text-[10px] text-slate-500">
+                          {new Date(p.createdAt).toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm text-white font-mono font-bold">
+                          {formatCurrency(p.amount)}
+                        </p>
+                        <span
+                          className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                            p.status === "SUCCEEDED"
+                              ? "bg-emerald-500/20 text-emerald-400"
+                              : "bg-rose-500/20 text-rose-400"
+                          }`}
+                        >
+                          {p.status}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500 text-center py-4">
+                  No payment records
+                </p>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                onClick={() => {
+                  setShowUserModal(false);
+                  setSelectedUser(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>
