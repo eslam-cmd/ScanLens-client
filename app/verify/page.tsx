@@ -14,14 +14,10 @@ import {
   Mail,
   Lock,
   Clock,
-  Sparkles,
   Check,
   X,
   Loader2,
-  ArrowRight,
-  Zap,
-  AlertTriangle,
-  FlaskConical,
+  Copy,
 } from "lucide-react";
 import { api } from "@/lib/api";
 
@@ -42,6 +38,7 @@ function VerifyContent() {
   const [canResend, setCanResend] = useState(true);
 
   const [adminOtp, setAdminOtp] = useState<string | null>(devOtpParam || null);
+  const [copiedCode, setCopiedCode] = useState(false);
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -112,7 +109,19 @@ function VerifyContent() {
     if (adminOtp && adminOtp.length === 6) {
       setCode(adminOtp.split(""));
       inputRefs.current[5]?.focus();
-      setSuccessMsg("✅ Code auto-filled! Click Verify to continue.");
+      setSuccessMsg("Code auto-filled. Click Verify to continue.");
+    }
+  };
+
+  // ✅ نسخ الرمز
+  const handleCopyCode = async () => {
+    if (!adminOtp) return;
+    try {
+      await navigator.clipboard.writeText(adminOtp);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 1500);
+    } catch (err) {
+      console.error("Copy failed:", err);
     }
   };
 
@@ -195,229 +204,215 @@ function VerifyContent() {
   const codeString = code.join("");
 
   return (
-    <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center px-3 sm:px-4 py-8 sm:py-12 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
-      <div className="w-full max-w-md space-y-6 sm:space-y-8 rounded-2xl border border-slate-800 bg-slate-900/60 p-5 sm:p-8 shadow-2xl backdrop-blur-xl transition-all duration-300 hover:border-slate-700">
+    <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center px-4 py-12 bg-slate-950">
+      <div className="w-full max-w-md">
         {/* Header */}
-        <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-sky-500/20 to-sky-600/10 border border-sky-500/20 text-sky-400 mb-2 sm:mb-3 relative group">
-            <KeyRound className="h-7 w-7 sm:h-8 sm:w-8 group-hover:scale-110 transition-transform duration-300" />
-            <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-400 rounded-full border-2 border-slate-900 flex items-center justify-center">
-              <Sparkles className="h-2.5 w-2.5 text-slate-900" />
-            </div>
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-slate-900 border border-slate-800 mb-4">
+            <KeyRound className="h-6 w-6 text-sky-400" />
           </div>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-            Verify Your Account
+          <h2 className="text-2xl font-semibold text-white mb-1.5">
+            Verify your account
           </h2>
-          <p className="text-sm sm:text-base text-slate-400">
+          <p className="text-sm text-slate-400">
             We sent a verification code to{" "}
-            <span className="font-mono text-sky-400 font-semibold">
+            <span className="font-mono text-slate-300">
               {email || "your email"}
             </span>
           </p>
         </div>
 
-        {/* ✅ قسم OTP للأدمن — مباشرة فوق حقول الإدخال */}
-        {adminOtp && (
-          <div className="relative overflow-hidden rounded-2xl border-2 border-dashed border-amber-500/60 bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-amber-600/10 p-4">
-            <div className="flex items-center justify-between gap-2 mb-3">
-              <div className="flex items-center gap-1.5">
-                <FlaskConical className="h-4 w-4 text-amber-400" />
-                <span className="text-[10px] sm:text-xs font-bold text-amber-400 uppercase tracking-wider">
-                  Admin Quick Test
+        {/* Card */}
+        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6 space-y-5">
+          {/* ✅ Admin Test Code */}
+          {adminOtp && (
+            <div className="rounded-lg border border-amber-900/50 bg-amber-950/20 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-medium text-amber-400 uppercase tracking-wider">
+                  Admin Test Code
+                </span>
+                <span className="text-[10px] text-amber-500/70">
+                  For testing only
                 </span>
               </div>
-              <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40">
-                <AlertTriangle className="h-2.5 w-2.5 text-amber-400" />
-                <span className="text-[9px] font-bold text-amber-400">
-                  TEST MODE
-                </span>
-              </div>
-            </div>
 
-            {/* الرمز بشكل كبير وواضح */}
-            <div className="flex items-center justify-center gap-1.5 sm:gap-2 mb-3">
-              {adminOtp.split("").map((digit, idx) => (
-                <span
-                  key={idx}
-                  className="w-9 h-11 sm:w-11 sm:h-13 flex items-center justify-center rounded-lg bg-slate-950 border-2 border-amber-500/70 text-xl sm:text-2xl font-mono font-black text-amber-300 shadow-md shadow-amber-500/20"
+              {/* Code Display */}
+              <div className="flex items-center justify-center gap-1.5 mb-3">
+                {adminOtp.split("").map((digit, idx) => (
+                  <span
+                    key={idx}
+                    className="w-9 h-11 flex items-center justify-center rounded-lg bg-slate-950 border border-amber-800/60 text-lg font-mono font-semibold text-amber-300"
+                  >
+                    {digit}
+                  </span>
+                ))}
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleAutoFill}
+                  className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium py-2 transition-colors"
                 >
-                  {digit}
-                </span>
-              ))}
+                  Auto-fill Code
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCopyCode}
+                  className="px-3 flex items-center justify-center rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                  title="Copy code"
+                >
+                  {copiedCode ? (
+                    <Check className="h-3.5 w-3.5 text-emerald-500" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Messages */}
+          {error && (
+            <div className="flex items-start gap-2.5 p-3 rounded-lg bg-rose-950/30 border border-rose-900/50 text-sm text-rose-300">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span className="flex-1">{error}</span>
+              <button
+                onClick={() => setError("")}
+                className="text-rose-400/60 hover:text-rose-400 transition p-0.5"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+
+          {successMsg && (
+            <div className="flex items-start gap-2.5 p-3 rounded-lg bg-emerald-950/30 border border-emerald-900/50 text-sm text-emerald-300">
+              <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
+              <span className="flex-1">{successMsg}</span>
+              <button
+                onClick={() => setSuccessMsg("")}
+                className="text-emerald-400/60 hover:text-emerald-400 transition p-0.5"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Form */}
+          <form onSubmit={handleVerify} className="space-y-4" noValidate>
+            {/* Email */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-300 flex items-center gap-2">
+                <Mail className="h-3.5 w-3.5 text-slate-500" />
+                Email Address
+              </label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="developer@example.com"
+                className="w-full rounded-lg border border-slate-800 bg-slate-950 px-4 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:border-slate-600 focus:outline-none transition-colors font-mono"
+              />
             </div>
 
-            {/* زر التعبئة التلقائية — الأهم */}
+            {/* OTP Code */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300 flex items-center gap-2">
+                <Lock className="h-3.5 w-3.5 text-slate-500" />
+                Verification Code
+              </label>
+              <div className="flex items-center justify-center gap-2">
+                {code.map((digit, index) => (
+                  <input
+                    key={index}
+                    ref={(el) => {
+                      inputRefs.current[index] = el;
+                    }}
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={1}
+                    value={digit}
+                    onChange={(e) => handleCodeChange(index, e.target.value)}
+                    onKeyDown={(e) => handleKeyDown(index, e)}
+                    onPaste={index === 0 ? handlePaste : undefined}
+                    className={`w-11 h-13 rounded-lg border bg-slate-950 text-center text-xl font-semibold font-mono text-slate-200 focus:outline-none transition-colors ${
+                      digit
+                        ? "border-slate-600"
+                        : "border-slate-800 focus:border-slate-600"
+                    }`}
+                    disabled={loading}
+                  />
+                ))}
+              </div>
+              <p className="text-center text-xs text-slate-500 pt-1">
+                Enter the 6-digit code sent to your email
+              </p>
+            </div>
+
+            {/* Submit */}
+            <button
+              type="submit"
+              disabled={loading || codeString.length !== 6}
+              className="w-full flex items-center justify-center gap-2 rounded-lg bg-sky-600 hover:bg-sky-500 py-2.5 font-medium text-sm text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Verifying...</span>
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="h-4 w-4" />
+                  <span>Verify Account</span>
+                </>
+              )}
+            </button>
+          </form>
+
+          {/* Footer Actions */}
+          <div className="flex items-center justify-between pt-4 border-t border-slate-800 text-sm">
             <button
               type="button"
-              onClick={handleAutoFill}
-              className="w-full flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 text-xs font-bold py-2 transition-all duration-200 hover:scale-[1.02] shadow-md shadow-amber-500/30"
+              onClick={handleResendOtp}
+              disabled={resending || !canResend}
+              className="text-slate-400 hover:text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors"
             >
-              <Zap className="h-3.5 w-3.5" />
-              Auto-fill the Code
-            </button>
-
-            <p className="mt-2 text-[9px] text-amber-400/70 text-center leading-relaxed">
-              ⚡ Visible only for admin accounts — code is also sent to email
-            </p>
-          </div>
-        )}
-
-        {/* Messages */}
-        {error && (
-          <div className="flex items-start gap-2.5 p-3 sm:p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs sm:text-sm font-medium text-rose-400 animate-slide-down">
-            <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-            <span className="flex-1">{error}</span>
-            <button
-              onClick={() => setError("")}
-              className="text-rose-400/60 hover:text-rose-400 transition p-1"
-            >
-              <X className="h-3.5 w-3.5" />
+              {resending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : !canResend ? (
+                <Clock className="h-3.5 w-3.5" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
+              <span>
+                {resending
+                  ? "Sending..."
+                  : !canResend
+                    ? `Resend in ${timer}s`
+                    : "Resend code"}
+              </span>
             </button>
           </div>
-        )}
+        </div>
 
-        {successMsg && (
-          <div className="flex items-start gap-2.5 p-3 sm:p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs sm:text-sm font-medium text-emerald-400 animate-slide-down">
-            <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
-            <span className="flex-1">{successMsg}</span>
-            <button
-              onClick={() => setSuccessMsg("")}
-              className="text-emerald-400/60 hover:text-emerald-400 transition p-1"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        )}
-
-        {/* Form */}
-        <form onSubmit={handleVerify} className="space-y-5" noValidate>
-          {/* Email */}
-          <div className="space-y-1.5">
-            <label className="text-xs sm:text-sm font-semibold text-slate-300 flex items-center gap-2">
-              <Mail className="h-3.5 w-3.5 text-slate-500" />
-              Email Address
-            </label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="developer@example.com"
-              className="w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-2.5 sm:py-3 text-sm sm:text-base text-slate-100 placeholder-slate-600 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500/30 transition font-mono"
-            />
-          </div>
-
-          {/* OTP Code Inputs */}
-          <div className="space-y-2">
-            <label className="text-xs sm:text-sm font-semibold text-slate-300 flex items-center gap-2">
-              <Lock className="h-3.5 w-3.5 text-slate-500" />
-              Verification Code (6-digit OTP)
-            </label>
-            <div className="flex items-center justify-center gap-2 sm:gap-3">
-              {code.map((digit, index) => (
-                <input
-                  key={index}
-                  ref={(el) => {
-                    inputRefs.current[index] = el;
-                  }}
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={1}
-                  value={digit}
-                  onChange={(e) => handleCodeChange(index, e.target.value)}
-                  onKeyDown={(e) => handleKeyDown(index, e)}
-                  onPaste={index === 0 ? handlePaste : undefined}
-                  className={`w-10 h-12 sm:w-12 sm:h-14 rounded-xl border bg-slate-950 text-center text-lg sm:text-2xl font-bold font-mono text-sky-400 focus:outline-none focus:ring-2 transition ${
-                    digit
-                      ? "border-sky-500 ring-1 ring-sky-500/30"
-                      : "border-slate-800 focus:border-sky-500"
-                  }`}
-                  disabled={loading}
-                />
-              ))}
-            </div>
-            <p className="text-center text-[10px] text-slate-500">
-              Enter the 6-digit code sent to your email
-            </p>
-          </div>
-
-          {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={loading || codeString.length !== 6}
-            className="relative w-full flex items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-sky-500 py-2.5 sm:py-3.5 font-semibold text-sm sm:text-base text-white shadow-lg shadow-sky-500/20 hover:shadow-sky-500/40 hover:scale-[1.02] transition-all duration-300 disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed overflow-hidden group"
-          >
-            <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
-            {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" />
-                <span>Verifying...</span>
-              </>
-            ) : (
-              <>
-                <ShieldCheck className="h-4 w-4 sm:h-5 sm:w-5 group-hover:rotate-12 transition-transform duration-300" />
-                <span>Verify Account</span>
-                <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5 group-hover:translate-x-1 transition-transform duration-300" />
-              </>
-            )}
-          </button>
-        </form>
-
-        {/* Footer Actions */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-800/80 pt-4 text-xs">
-          <button
-            type="button"
-            onClick={handleResendOtp}
-            disabled={resending || !canResend}
-            className="text-sky-400 hover:text-sky-300 font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 transition"
-          >
-            {resending ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : !canResend ? (
-              <Clock className="h-3.5 w-3.5" />
-            ) : (
-              <RefreshCw className="h-3.5 w-3.5" />
-            )}
-            <span>
-              {resending
-                ? "Sending..."
-                : !canResend
-                  ? `Resend in ${timer}s`
-                  : "Didn't receive code? Resend"}
-            </span>
-          </button>
-
+        {/* Back to Login */}
+        <div className="mt-6 text-center">
           <Link
             href="/login"
-            className="text-slate-400 hover:text-slate-200 flex items-center gap-1 transition"
+            className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-300 transition-colors"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            <span>Back to Login</span>
+            <span>Back to sign in</span>
           </Link>
         </div>
 
         {/* Trust Badge */}
-        <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 pt-2">
-          <div className="flex items-center gap-1.5">
-            <ShieldCheck className="h-3 w-3 text-emerald-400" />
-            <span className="text-[10px] sm:text-xs text-slate-500">
-              Secure verification
-            </span>
-          </div>
-          <div className="w-px h-4 bg-slate-800" />
-          <div className="flex items-center gap-1.5">
-            <Clock className="h-3 w-3 text-emerald-400" />
-            <span className="text-[10px] sm:text-xs text-slate-500">
-              Code expires in 10 min
-            </span>
-          </div>
-          <div className="w-px h-4 bg-slate-800" />
-          <div className="flex items-center gap-1.5">
-            <Check className="h-3 w-3 text-emerald-400" />
-            <span className="text-[10px] sm:text-xs text-slate-500">
-              Email verified
-            </span>
-          </div>
+        <div className="mt-8 flex items-center justify-center gap-1.5 text-xs text-slate-600">
+          <Lock className="h-3 w-3" />
+          <span>Code expires in 10 minutes</span>
         </div>
       </div>
     </div>
@@ -428,10 +423,10 @@ export default function VerifyPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center text-slate-400 text-sm">
+        <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center text-slate-500 text-sm">
           <div className="flex items-center gap-3">
-            <Loader2 className="h-5 w-5 animate-spin text-sky-400" />
-            <span>Loading verification form...</span>
+            <Loader2 className="h-5 w-5 animate-spin text-slate-500" />
+            <span>Loading...</span>
           </div>
         </div>
       }

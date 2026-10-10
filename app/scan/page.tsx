@@ -94,34 +94,30 @@ const getGuestScanData = () => {
       const now = new Date();
       const today = now.toDateString();
 
-      if (parsed.resetAt && parsed.resetAt > now.getTime()) {
+      if (
+        parsed.date === today &&
+        typeof parsed.resetAt === "number" &&
+        parsed.resetAt > now.getTime()
+      ) {
         return {
-          count: parsed.count || 0,
-          date: parsed.date || today,
+          count: Math.min(
+            MAX_GUEST_SCANS,
+            Math.max(0, Math.floor(Number(parsed.count) || 0)),
+          ),
+          date: today,
           resetAt: parsed.resetAt,
         };
       }
 
-      return buildGuestScanData(0, now);
+      const resetData = buildGuestScanData(0, now);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(resetData));
+      return resetData;
     }
   } catch {
     // تجاهل الأخطاء
   }
 
   return buildGuestScanData(0);
-};
-
-// ✅ دالة لحفظ بيانات الزائر
-const saveGuestScanData = (count: number) => {
-  try {
-    const now = new Date();
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(buildGuestScanData(count, now)),
-    );
-  } catch {
-    // تجاهل الأخطاء
-  }
 };
 
 function ScanPageContent({ user: initialUser }: { user?: any }) {
@@ -136,6 +132,7 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
   const [scanHistory, setScanHistory] = useState<any[]>([]);
 
   const [loading, setLoading] = useState(false);
+  const [queueStatus, setQueueStatus] = useState("");
   const [error, setError] = useState("");
   const [scanResult, setScanResult] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<"overview" | "ai-remediation">(
@@ -184,9 +181,13 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
   } | null>(null);
 
   const setGuestScanCount = (count: number) => {
-    const newData = { ...guestScanData, count };
+    const newData = buildGuestScanData(count);
     setGuestScanData(newData);
-    saveGuestScanData(count);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
+    } catch {
+      // تجاهل أخطاء التخزين المحلي
+    }
   };
 
   const [scanFilters, setScanFilters] = useState({
@@ -412,6 +413,33 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
 
   // ✅ عداد تنازلي للنافذة
   useEffect(() => {
+    if (isLoggedIn) return;
+
+    const syncGuestScanData = () => {
+      if (document.visibilityState === "hidden") return;
+      const data = getGuestScanData();
+      setGuestScanData(data);
+      setLimitResetAt(data.resetAt);
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === STORAGE_KEY || event.key === null) {
+        syncGuestScanData();
+      }
+    };
+
+    window.addEventListener("focus", syncGuestScanData);
+    window.addEventListener("storage", handleStorage);
+    document.addEventListener("visibilitychange", syncGuestScanData);
+
+    return () => {
+      window.removeEventListener("focus", syncGuestScanData);
+      window.removeEventListener("storage", handleStorage);
+      document.removeEventListener("visibilitychange", syncGuestScanData);
+    };
+  }, [isLoggedIn]);
+
+  useEffect(() => {
     const updateResetCountdown = () => {
       const now = Date.now();
       const remaining = Math.max(0, limitResetAt - now);
@@ -432,9 +460,8 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
         }
 
         // ✅ للزوار
-        const resetData = buildGuestScanData(0, new Date());
+        const resetData = getGuestScanData();
         setGuestScanData(resetData);
-        saveGuestScanData(0);
         setLimitResetAt(resetData.resetAt);
       }
     };
@@ -478,8 +505,17 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
     async (urlToScan: string) => {
       if (!urlToScan) return;
 
+      const currentGuestCount = isLoggedIn
+        ? guestScanCount
+        : getGuestScanData().count;
       if (!isLoggedIn) {
-        const remaining = MAX_GUEST_SCANS - guestScanCount;
+        const currentGuestData = getGuestScanData();
+        setGuestScanData(currentGuestData);
+        setLimitResetAt(currentGuestData.resetAt);
+      }
+
+      if (!isLoggedIn) {
+        const remaining = MAX_GUEST_SCANS - currentGuestCount;
         if (remaining <= 0) {
           setError(
             "You have reached the daily limit of 2 free scans. Please log in to continue scanning.",
@@ -488,7 +524,7 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
         }
       }
 
-      if (!canPerformScan()) {
+      if (isLoggedIn && !canPerformScan()) {
         setError(
           isLoggedIn
             ? "You have reached your plan's scan limit. Please upgrade to continue."
@@ -505,21 +541,69 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
 
       setLoading(true);
       setError("");
+      setQueueStatus("");
 
       try {
-        // ✅ استخدام direct-scan
-        const res = await api.post("/scans/direct-scan", {
-          url: formattedUrl,
-          deepScan: isDeepScan,
-        });
+        const res = await api.post(
+          isLoggedIn ? "/scans/direct-scan" : "/scans/guest-scan",
+          {
+            url: formattedUrl,
+            deepScan: isDeepScan,
+          },
+        );
 
-        console.log("📊 Direct scan result:", res.data);
-        setScanResult(res.data);
+        let scanResult = res.data;
+
+        if (isLoggedIn) {
+          const { jobId } = res.data;
+          if (!jobId) {
+            throw new Error("The server did not return a scan job ID.");
+          }
+
+          setQueueStatus("Waiting in queue...");
+          for (let attempt = 0; attempt < 300; attempt += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+
+            const statusResponse = await api.get(
+              `/scans/jobs/${encodeURIComponent(jobId)}`,
+            );
+            const job = statusResponse.data;
+
+            if (job.status === "completed") {
+              if (!job.result) {
+                throw new Error("The scan completed without returning a result.");
+              }
+              scanResult = job.result;
+              break;
+            }
+
+            if (job.status === "failed") {
+              throw new Error(job.failedReason || "The scan failed.");
+            }
+
+            if (attempt === 299) {
+              throw new Error(
+                "The scan is taking longer than expected. Please check again later.",
+              );
+            }
+
+            setQueueStatus(
+              job.status === "active"
+                ? `Scan in progress (${job.progress || 0}%)...`
+                : job.position
+                  ? `Waiting in queue (position ${job.position})...`
+                  : "Waiting for a scan worker...",
+            );
+          }
+        }
+
+        console.log("📊 Scan result:", scanResult);
+        setScanResult(scanResult);
         setLoading(false);
 
         // ✅ تحديث نافذة الاستخدام من استجابة الفحص
-        if (res.data?.dailyUsage) {
-          const daily = res.data.dailyUsage;
+        if (scanResult?.dailyUsage) {
+          const daily = scanResult.dailyUsage;
 
           setUsageWindow((prev) => ({
             windowEnd: daily.windowEnd
@@ -537,7 +621,8 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
         }
 
         if (!isLoggedIn) {
-          setGuestScanCount(guestScanCount + 1);
+          const latestGuestCount = getGuestScanData().count;
+          setGuestScanCount(latestGuestCount + 1);
         } else {
           // ✅ جلب التاريخ + نافذة الاستخدام المحدثة
           await fetchScanHistory();
@@ -558,10 +643,13 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
           setError("Server error. Please try again later.");
         } else {
           setError(
-            err.response?.data?.message || "Failed to complete website scan",
+            err.response?.data?.message ||
+              err.message ||
+              "Failed to complete website scan",
           );
         }
         setLoading(false);
+        setQueueStatus("");
       }
     },
     [
@@ -581,7 +669,20 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
       e.preventDefault();
       if (!inputUrl) return;
 
-      const limitStatus = getScanLimitStatus();
+      const currentGuestCount = isLoggedIn
+        ? guestScanCount
+        : getGuestScanData().count;
+      if (!isLoggedIn) {
+        const currentGuestData = getGuestScanData();
+        setGuestScanData(currentGuestData);
+        setLimitResetAt(currentGuestData.resetAt);
+      }
+
+      const limitStatus = isLoggedIn
+        ? getScanLimitStatus()
+        : {
+            isLimitReached: currentGuestCount >= MAX_GUEST_SCANS,
+          };
       if (limitStatus.isLimitReached) {
         setError(
           isLoggedIn
@@ -592,7 +693,7 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
       }
 
       if (!isLoggedIn) {
-        const remaining = MAX_GUEST_SCANS - guestScanCount;
+        const remaining = MAX_GUEST_SCANS - currentGuestCount;
         if (remaining <= 0) {
           setError(
             "You have reached the daily limit of 2 free scans. Please log in to continue scanning.",
@@ -601,7 +702,7 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
         }
       }
 
-      if (!canPerformScan()) {
+      if (isLoggedIn && !canPerformScan()) {
         setError(
           isLoggedIn
             ? "You have reached your plan's scan limit. Please upgrade to continue."
@@ -1642,8 +1743,8 @@ function ScanPageContent({ user: initialUser }: { user?: any }) {
             Executing Security Audit...
           </h2>
           <p className="text-sm text-slate-400 max-w-md mx-auto">
-            Evaluating security headers, SSL certificates, CORS policies, and
-            comparing with previous audit history.
+            {queueStatus ||
+              "Evaluating security headers, SSL certificates, CORS policies, and comparing with previous audit history."}
           </p>
         </div>
       )}
