@@ -94,9 +94,7 @@ client/
 │   ├── api.ts                   # API client configuration
 │   ├── plans.config.ts          # Subscription plans data
 │   └── guards/                  # Route protection
-│       ├── withAuth.tsx         # Auth guard
-│       ├── withAdmin.tsx        # Admin guard
-│       └── withSubscription.tsx # Subscription guard
+│       └── withAdmin.tsx        # Admin guard
 ├── public/                      # Static assets
 │   └── img/                     # Images directory
 ├── tailwind.config.ts           # Tailwind CSS configuration
@@ -134,11 +132,9 @@ npm run lint
 
 ## 🔐 Authentication & Authorization
 
-The application includes protected routes using custom guards:
+The admin page uses a custom guard:
 
-- **`withAuth`** - Requires user login
 - **`withAdmin`** - Requires admin privileges
-- **`withSubscription`** - Checks active subscription status
 
 ## 📊 Key Features
 
